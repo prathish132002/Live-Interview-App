@@ -1,5 +1,5 @@
 {
-  "name": "live-interview",
+  "name": "interview-simulation",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,7 +12,10 @@
     "@google/genai": "^1.26.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "remarkable": "^2.0.1"
+    "remarkable": "^2.0.1",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1",
+    "firebase": "^12.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
