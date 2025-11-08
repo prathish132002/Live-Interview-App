@@ -1,4 +1,7 @@
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Type } from "@google/genai";
+// FIX: The 'LiveSession' type is not exported from the '@google/genai' module.
+// We can infer it from the 'ai.live.connect' method's return type for type safety.
+import { GoogleGenAI, LiveServerMessage, Modality, Type } from "@google/genai";
+type LiveSession = Awaited<ReturnType<InstanceType<typeof GoogleGenAI>["live"]["connect"]>>;
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -369,24 +372,27 @@ const App = () => {
         <>
             <style>{`
                 :root {
-                    --primary-color: #4A90E2;
-                    --secondary-color: #F5A623;
-                    --text-color: #4A4A4A;
-                    --bg-color: #F7F9FC;
-                    --card-bg: #FFFFFF;
-                    --border-color: #DDE4EE;
-                    --error-color: #D32F2F;
-                    --success-color: #2E7D32;
+                    --primary-color: #3A86FF;
+                    --secondary-color: #FFBE0B;
+                    --text-color: #333333;
+                    --bg-start: #E0EFFF;
+                    --bg-end: #F0E8FF;
+                    --card-bg: rgba(255, 255, 255, 0.85);
+                    --border-color: #E0E0E0;
+                    --error-color: #FF3B30;
+                    --success-color: #34C759;
                 }
                 body {
                     font-family: 'Poppins', sans-serif;
-                    background-color: var(--bg-color);
+                    background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%);
                     color: var(--text-color);
                     margin: 0;
                     display: flex;
                     justify-content: center;
                     align-items: center;
                     min-height: 100vh;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
                 }
                 .container {
                     width: 100%;
@@ -394,14 +400,24 @@ const App = () => {
                     margin: 20px;
                     padding: 40px;
                     background-color: var(--card-bg);
-                    border-radius: 20px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                    backdrop-filter: blur(15px);
+                    border-radius: 24px;
+                    box-shadow: 0 16px 32px rgba(0,0,0,0.1);
+                    border: 1px solid rgba(255, 255, 255, 0.5);
                     box-sizing: border-box;
+                    transition: transform 0.3s ease, box-shadow 0.3s ease;
                 }
                 h1, h2 {
                     color: var(--primary-color);
                     text-align: center;
                     margin-bottom: 30px;
+                    font-weight: 600;
+                }
+                 h1 {
+                    font-size: 2.5rem;
+                }
+                h2 {
+                    font-size: 2rem;
                 }
                 .form-group {
                     margin-bottom: 25px;
@@ -409,16 +425,24 @@ const App = () => {
                 label {
                     display: block;
                     font-weight: 500;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
+                    color: #555;
                 }
                 input, select {
                     width: 100%;
-                    padding: 12px;
+                    padding: 14px;
                     border: 1px solid var(--border-color);
-                    border-radius: 8px;
+                    border-radius: 12px;
                     box-sizing: border-box;
                     font-family: 'Poppins', sans-serif;
                     font-size: 1rem;
+                    background-color: #fff;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                }
+                input:focus, select:focus {
+                    outline: none;
+                    border-color: var(--primary-color);
+                    box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.25);
                 }
                 .button {
                     width: 100%;
@@ -428,85 +452,110 @@ const App = () => {
                     color: white;
                     background-color: var(--primary-color);
                     border: none;
-                    border-radius: 8px;
+                    border-radius: 12px;
                     cursor: pointer;
-                    transition: background-color 0.3s, transform 0.1s;
+                    transition: background-color 0.3s, transform 0.2s ease-in-out;
                     margin-top: 10px;
                 }
                 .button:hover:not(:disabled) {
-                    background-color: #357ABD;
+                    background-color: #3178E6;
+                    transform: scale(1.02);
+                    box-shadow: 0 4px 15px rgba(58, 134, 255, 0.3);
+                }
+                .button:active:not(:disabled) {
+                    transform: scale(0.99);
                 }
                 .button:disabled {
                     background-color: #A9CBEF;
                     cursor: not-allowed;
+                    transform: scale(1);
+                    box-shadow: none;
                 }
                 .button.secondary {
-                  background-color: #888;
+                  background-color: #6c757d;
+                  color: white;
                 }
                 .button.secondary:hover:not(:disabled) {
-                  background-color: #666;
+                  background-color: #5a6268;
+                  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
                 }
                 .transcript-container {
                   height: 400px;
                   overflow-y: auto;
+                  background-color: #f8f9fa;
                   border: 1px solid var(--border-color);
-                  border-radius: 8px;
+                  border-radius: 12px;
                   padding: 20px;
                   margin-bottom: 20px;
                 }
                 .transcript-bubble {
-                  padding: 10px 15px;
-                  border-radius: 15px;
-                  margin-bottom: 10px;
+                  padding: 12px 18px;
+                  border-radius: 20px;
+                  margin-bottom: 12px;
                   max-width: 80%;
+                  line-height: 1.5;
                 }
                 .transcript-bubble.user {
-                  background-color: #EBF2FC;
+                  background-color: var(--primary-color);
+                  color: white;
                   margin-left: auto;
-                  border-bottom-right-radius: 3px;
+                  border-bottom-right-radius: 5px;
                 }
                 .transcript-bubble.interviewer {
-                  background-color: #F1F1F1;
+                  background-color: #E9ECEF;
+                  color: var(--text-color);
                   margin-right: auto;
-                  border-bottom-left-radius: 3px;
+                  border-bottom-left-radius: 5px;
+                }
+                 .transcript-bubble strong {
+                    display: block;
+                    margin-bottom: 4px;
+                    font-weight: 600;
                 }
                 .error {
                     color: var(--error-color);
                     text-align: center;
                     margin-top: 20px;
+                    background-color: rgba(255, 59, 48, 0.1);
+                    padding: 10px;
+                    border-radius: 8px;
                 }
                 .timer {
                     text-align: center;
-                    font-size: 1.8rem;
+                    font-size: 2.2rem;
                     font-weight: 700;
-                    margin-bottom: 15px;
+                    margin-bottom: 20px;
                     color: var(--primary-color);
                     transition: color 0.5s ease;
                 }
                 .timer.warning {
-                    color: var(--error-color);
+                    color: var(--secondary-color);
                 }
                 .briefing-text {
-                    background-color: #f0f4f8;
-                    border-left: 4px solid var(--primary-color);
+                    background-color: #eaf2ff;
+                    border-left: 5px solid var(--primary-color);
                     padding: 20px;
-                    margin: 20px 0;
-                    border-radius: 4px;
-                    font-style: italic;
-                    color: #555;
+                    margin: 25px 0;
+                    border-radius: 8px;
+                    font-style: normal;
+                    font-size: 1.05rem;
+                    line-height: 1.6;
+                    color: #445;
                 }
                 .feedback-container {
                     text-align: center;
                 }
                 .score-overall-container {
-                    margin: 20px 0 30px;
+                    margin: 20px 0 40px;
                 }
                 .score-circle {
-                    width: 120px;
-                    height: 120px;
+                    width: 150px;
+                    height: 150px;
                     border-radius: 50%;
-                    background-color: var(--bg-color);
-                    border: 8px solid var(--primary-color);
+                    background: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%);
+                    border: 10px solid;
+                    border-image-slice: 1;
+                    border-image-source: linear-gradient(to right, var(--primary-color), var(--secondary-color));
                     display: flex;
                     justify-content: center;
                     align-items: center;
@@ -514,9 +563,10 @@ const App = () => {
                     margin: 0 auto;
                     font-size: 1.2rem;
                     color: var(--primary-color);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
                 }
                 .score-circle span {
-                    font-size: 3rem;
+                    font-size: 3.5rem;
                     font-weight: 700;
                     line-height: 1;
                 }
@@ -531,35 +581,38 @@ const App = () => {
                     text-align: center;
                 }
                 .score-item h4 {
-                    margin: 0 0 5px 0;
+                    margin: 0 0 8px 0;
                     font-weight: 500;
                     color: #777;
+                    font-size: 0.9rem;
+                    text-transform: uppercase;
                 }
                 .score-item p {
                     margin: 0;
-                    font-size: 1.5rem;
+                    font-size: 1.8rem;
                     font-weight: 600;
                     color: var(--text-color);
                 }
                 .feedback-summary {
                     text-align: left;
-                    background-color: #f0f4f8;
-                    padding: 20px;
-                    border-radius: 8px;
+                    background-color: #f8f9fa;
+                    padding: 25px;
+                    border-radius: 12px;
                     margin-bottom: 30px;
                 }
                 .feedback-summary h3 {
                     margin-top: 0;
                     color: var(--primary-color);
                     text-align: left;
+                    font-weight: 600;
                 }
                 .spinner {
-                  border: 4px solid rgba(0,0,0,0.1);
-                  width: 36px;
-                  height: 36px;
+                  border: 4px solid #f3f3f3;
+                  width: 40px;
+                  height: 40px;
                   border-radius: 50%;
-                  border-left-color: var(--primary-color);
-                  animation: spin 1s ease infinite;
+                  border-top-color: var(--primary-color);
+                  animation: spin 1s linear infinite;
                   margin: 20px auto;
                 }
                 @keyframes spin {
