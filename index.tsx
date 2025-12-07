@@ -105,6 +105,8 @@ const App = () => {
     const [briefingText, setBriefingText] = useState('');
     const [feedback, setFeedback] = useState<FeedbackData | null>(null);
     const [showFullTranscript, setShowFullTranscript] = useState(false);
+    const [showPermissionModal, setShowPermissionModal] = useState(false);
+    const [permissionDenied, setPermissionDenied] = useState(false);
 
 
     const sessionRef = useRef<LiveSession | null>(null);
@@ -277,6 +279,12 @@ const App = () => {
         }
     };
 
+    const confirmPermission = () => {
+        setPermissionDenied(false);
+        setShowPermissionModal(false);
+        startLiveSession();
+    };
+
 
     const startLiveSession = async () => {
         // Double check cleanup to ensure no lingering connections cause 503s
@@ -440,7 +448,7 @@ const App = () => {
                     },
                     onerror: (e: ErrorEvent) => {
                         console.error('Session error:', e);
-                        setError('Connection error: The service is currently unavailable or the connection was lost. Please refresh and try again.');
+                        setError('Connection error: The service is currently unavailable. Please refresh and try again.');
                         // Don't call stopInterview here as it might trigger recursive state updates
                         isSessionActive.current = false;
                         setIsLoading(false);
@@ -465,7 +473,15 @@ const App = () => {
 
         } catch (err: any) {
             console.error("Failed to start interview:", err);
-            setError(`Failed to start interview: ${err.message}. Please check microphone permissions and try again.`);
+            // Enhanced error handling for permissions
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message.includes('permission') || err.message.includes('denied')) {
+                setPermissionDenied(true);
+                setShowPermissionModal(true); // Re-open or keep open the modal to show the error
+                setError(null);
+            } else {
+                setError(`Failed to start interview: ${err.message}. Please check microphone permissions and try again.`);
+                setShowPermissionModal(false);
+            }
             setIsLoading(false);
             cleanupAudioResources();
         }
@@ -570,20 +586,20 @@ const App = () => {
         <>
             <style>{`
                 :root {
-                    --primary-color: #3A86FF;
-                    --secondary-color: #FFBE0B;
+                    --primary-color: #6C63FF;
+                    --secondary-color: #3AF2FF;
+                    --accent-color: #5E9CFF;
                     --text-color: #333333;
-                    --bg-start: #E0EFFF;
-                    --bg-end: #F0E8FF;
-                    --card-bg: rgba(255, 255, 255, 0.85);
+                    --bg-dark: #0B0E14;
+                    --card-bg: rgba(255, 255, 255, 0.9);
                     --border-color: #E0E0E0;
                     --error-color: #FF3B30;
                     --success-color: #34C759;
                 }
                 body {
                     font-family: 'Poppins', sans-serif;
-                    background: #f8f9fa; /* Replaced static gradient with neutral base for animation */
-                    color: var(--text-color);
+                    background: var(--bg-dark);
+                    color: white;
                     margin: 0;
                     display: flex;
                     justify-content: center;
@@ -609,7 +625,7 @@ const App = () => {
                     position: absolute;
                     border-radius: 50%;
                     filter: blur(80px);
-                    opacity: 0.7;
+                    opacity: 0.5;
                     animation: float 20s infinite ease-in-out alternate;
                 }
                 
@@ -618,8 +634,7 @@ const App = () => {
                     left: -10%;
                     width: 60vw;
                     height: 60vw;
-                    background: radial-gradient(circle, #E0EFFF, #3A86FF 90%);
-                    opacity: 0.4;
+                    background: radial-gradient(circle, #6C63FF, transparent 70%);
                     animation-duration: 25s;
                 }
                 
@@ -628,8 +643,7 @@ const App = () => {
                     right: -10%;
                     width: 50vw;
                     height: 50vw;
-                    background: radial-gradient(circle, #F0E8FF, #9b5de5 90%);
-                    opacity: 0.3;
+                    background: radial-gradient(circle, #3AF2FF, transparent 70%);
                     animation-delay: -5s;
                 }
                 
@@ -638,8 +652,7 @@ const App = () => {
                     left: 40%;
                     width: 30vw;
                     height: 30vw;
-                    background: radial-gradient(circle, #FFBE0B, transparent);
-                    opacity: 0.2;
+                    background: radial-gradient(circle, #5E9CFF, transparent 70%);
                     animation-duration: 18s;
                     animation-delay: -10s;
                 }
@@ -651,8 +664,8 @@ const App = () => {
                     width: 100%;
                     height: 100%;
                     background-image: 
-                        linear-gradient(rgba(58, 134, 255, 0.05) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(58, 134, 255, 0.05) 1px, transparent 1px);
+                        linear-gradient(rgba(108, 99, 255, 0.05) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(108, 99, 255, 0.05) 1px, transparent 1px);
                     background-size: 60px 60px;
                     mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
                     animation: pulseGrid 8s infinite alternate ease-in-out;
@@ -667,23 +680,159 @@ const App = () => {
                 }
 
                 @keyframes pulseGrid {
-                    0% { opacity: 0.3; transform: scale(1); }
-                    100% { opacity: 0.6; transform: scale(1.02); }
+                    0% { opacity: 0.2; transform: scale(1); }
+                    100% { opacity: 0.4; transform: scale(1.02); }
                 }
 
+                /* Landing Page Specific Layout */
+                .landing-container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    width: 100%;
+                    padding: 40px 20px;
+                    box-sizing: border-box;
+                    text-align: center;
+                    color: white;
+                }
+
+                .home-hero {
+                    max-width: 900px;
+                    margin-bottom: 60px;
+                    animation: fadeIn 1s ease-out;
+                }
+
+                .home-title {
+                    font-size: 4rem;
+                    line-height: 1.1;
+                    margin-bottom: 20px;
+                    font-weight: 700;
+                    letter-spacing: -1px;
+                    background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                }
+
+                .home-subtitle {
+                    font-size: 1.25rem;
+                    color: #d1d5db;
+                    margin-bottom: 40px;
+                    line-height: 1.6;
+                    max-width: 600px;
+                    margin-left: auto;
+                    margin-right: auto;
+                }
+
+                .btn-group {
+                    display: flex;
+                    gap: 20px;
+                    justify-content: center;
+                }
+
+                .btn-lg {
+                    padding: 16px 40px;
+                    font-size: 1.1rem;
+                    border-radius: 50px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    transition: all 0.3s ease;
+                    text-decoration: none;
+                }
+
+                .btn-primary-gradient {
+                    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+                    border: none;
+                    color: white;
+                    box-shadow: 0 10px 20px rgba(108, 99, 255, 0.3);
+                }
+
+                .btn-primary-gradient:hover {
+                    transform: scale(1.05);
+                    box-shadow: 0 0 25px rgba(108, 99, 255, 0.5);
+                }
+
+                .btn-outline-gradient {
+                    background: transparent;
+                    border: 2px solid var(--accent-color);
+                    color: white;
+                    box-shadow: 0 0 15px rgba(94, 156, 255, 0.1);
+                }
+
+                .btn-outline-gradient:hover {
+                    transform: scale(1.05);
+                    background: rgba(94, 156, 255, 0.1);
+                    box-shadow: 0 0 20px rgba(94, 156, 255, 0.3);
+                }
+
+                .features-row {
+                    display: flex;
+                    flex-wrap: wrap;
+                    justify-content: center;
+                    gap: 30px;
+                    width: 100%;
+                    max-width: 1200px;
+                }
+
+                .glass-card {
+                    flex: 1;
+                    min-width: 280px;
+                    max-width: 350px;
+                    background: rgba(255, 255, 255, 0.05);
+                    backdrop-filter: blur(16px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 30px;
+                    border-radius: 24px;
+                    text-align: left;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+                }
+
+                .glass-card:hover {
+                    transform: translateY(-10px);
+                    background: rgba(255, 255, 255, 0.08);
+                    border-color: rgba(255, 255, 255, 0.3);
+                    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+                }
+
+                .card-icon {
+                    font-size: 2.5rem;
+                    margin-bottom: 20px;
+                    display: inline-block;
+                    background: rgba(255,255,255,0.1);
+                    padding: 10px;
+                    border-radius: 12px;
+                }
+
+                .card-title {
+                    font-size: 1.25rem;
+                    font-weight: 600;
+                    margin-bottom: 10px;
+                    color: white;
+                }
+
+                .card-desc {
+                    font-size: 0.95rem;
+                    color: #9ca3af;
+                    line-height: 1.5;
+                }
+
+                /* Standard Container for other screens */
                 .container {
                     width: 100%;
                     max-width: 800px;
                     margin: 20px;
                     padding: 40px;
                     background-color: var(--card-bg);
-                    backdrop-filter: blur(20px);
                     border-radius: 24px;
-                    box-shadow: 0 16px 32px rgba(0,0,0,0.05);
+                    box-shadow: 0 16px 32px rgba(0,0,0,0.1);
                     border: 1px solid rgba(255, 255, 255, 0.6);
                     box-sizing: border-box;
-                    transition: transform 0.3s ease, box-shadow 0.3s ease;
+                    color: var(--text-color); /* Reset text color for form readability */
                 }
+                
+                /* Keep form styles readable on white container */
                 h1, h2 {
                     color: var(--primary-color);
                     text-align: center;
@@ -720,11 +869,12 @@ const App = () => {
                     font-size: 1rem;
                     background-color: #fff;
                     transition: border-color 0.2s, box-shadow 0.2s;
+                    color: #333;
                 }
                 input:focus, select:focus {
                     outline: none;
                     border-color: var(--primary-color);
-                    box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.25);
+                    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.25);
                 }
                 input[type="file"] {
                     padding: 10px;
@@ -742,9 +892,6 @@ const App = () => {
                     color: var(--text-color);
                     transition: background-color 0.2s;
                 }
-                input[type="file"]::file-selector-button:hover {
-                    background-color: #d0d0d0;
-                }
                 .button {
                     width: 100%;
                     padding: 15px;
@@ -759,12 +906,9 @@ const App = () => {
                     margin-top: 10px;
                 }
                 .button:hover:not(:disabled) {
-                    background-color: #3178E6;
+                    background-color: #564FCC;
                     transform: scale(1.02);
-                    box-shadow: 0 4px 15px rgba(58, 134, 255, 0.3);
-                }
-                .button:active:not(:disabled) {
-                    transform: scale(0.99);
+                    box-shadow: 0 4px 15px rgba(108, 99, 255, 0.3);
                 }
                 .button:disabled {
                     background-color: #A9CBEF;
@@ -776,258 +920,10 @@ const App = () => {
                   background-color: #6c757d;
                   color: white;
                 }
-                .button.secondary:hover:not(:disabled) {
-                  background-color: #5a6268;
-                  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-                }
-                .transcript-container {
-                  height: 400px;
-                  overflow-y: auto;
-                  background-color: #f8f9fa;
-                  border: 1px solid var(--border-color);
-                  border-radius: 12px;
-                  padding: 20px;
-                  margin-bottom: 20px;
-                }
-                .transcript-bubble {
-                  padding: 12px 18px;
-                  border-radius: 20px;
-                  margin-bottom: 12px;
-                  max-width: 80%;
-                  line-height: 1.5;
-                }
-                .transcript-bubble.user {
-                  background-color: var(--primary-color);
-                  color: white;
-                  margin-left: auto;
-                  border-bottom-right-radius: 5px;
-                }
-                .transcript-bubble.interviewer {
-                  background-color: #E9ECEF;
-                  color: var(--text-color);
-                  margin-right: auto;
-                  border-bottom-left-radius: 5px;
-                }
-                 .transcript-bubble strong {
-                    display: block;
-                    margin-bottom: 4px;
-                    font-weight: 600;
-                }
-                .error {
-                    color: var(--error-color);
-                    text-align: center;
-                    margin-top: 20px;
-                    background-color: rgba(255, 59, 48, 0.1);
-                    padding: 10px;
-                    border-radius: 8px;
-                }
-                .timer {
-                    text-align: center;
-                    font-size: 2.2rem;
-                    font-weight: 700;
-                    margin-bottom: 20px;
-                    color: var(--primary-color);
-                    transition: color 0.5s ease;
-                }
-                .timer.warning {
-                    color: var(--secondary-color);
-                }
-                .briefing-text {
-                    background-color: #eaf2ff;
-                    border-left: 5px solid var(--primary-color);
-                    padding: 20px;
-                    margin: 25px 0;
-                    border-radius: 8px;
-                    font-style: normal;
-                    font-size: 1.05rem;
-                    line-height: 1.6;
-                    color: #445;
-                }
-                .feedback-container {
-                    text-align: center;
-                }
-                .score-overall-container {
-                    margin: 20px 0 40px;
-                }
-                .score-circle {
-                    width: 150px;
-                    height: 150px;
-                    border-radius: 50%;
-                    background: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%);
-                    border: 10px solid;
-                    border-image-slice: 1;
-                    border-image-source: linear-gradient(to right, var(--primary-color), var(--secondary-color));
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    flex-direction: column;
-                    margin: 0 auto;
-                    font-size: 1.2rem;
-                    color: var(--primary-color);
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-                }
-                .score-circle span {
-                    font-size: 3.5rem;
-                    font-weight: 700;
-                    line-height: 1;
-                }
-                .scores-detailed {
-                    display: flex;
-                    justify-content: space-around;
-                    margin-bottom: 30px;
-                    padding-bottom: 20px;
-                    border-bottom: 1px solid var(--border-color);
-                }
-                .score-item {
-                    text-align: center;
-                }
-                .score-item h4 {
-                    margin: 0 0 8px 0;
-                    font-weight: 500;
-                    color: #777;
-                    font-size: 0.9rem;
-                    text-transform: uppercase;
-                }
-                .score-item p {
-                    margin: 0;
-                    font-size: 1.8rem;
-                    font-weight: 600;
-                    color: var(--text-color);
-                }
-                .feedback-section {
-                    text-align: left;
-                    background-color: #f8f9fa;
-                    padding: 20px;
-                    border-radius: 12px;
-                    margin-bottom: 20px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-                }
-                .feedback-section h3 {
-                    margin-top: 0;
-                    color: var(--primary-color);
-                    border-bottom: 1px solid #e0e0e0;
-                    padding-bottom: 10px;
-                    margin-bottom: 15px;
-                }
-                .feedback-list {
-                    padding-left: 20px;
-                }
-                .feedback-list li {
-                    margin-bottom: 8px;
-                    color: #444;
-                    line-height: 1.5;
-                }
-                .feedback-summary {
-                    text-align: left;
-                    background-color: #f0f7ff;
-                    padding: 25px;
-                    border-radius: 12px;
-                    margin-bottom: 30px;
-                    border-left: 4px solid var(--primary-color);
-                }
                 
-                .transcript-toggle {
-                    background: none;
-                    border: none;
-                    color: #666;
-                    text-decoration: underline;
-                    cursor: pointer;
-                    margin: 10px 0 20px;
-                    font-size: 0.9rem;
-                }
-                
-                .transcript-view {
-                    text-align: left;
-                    max-height: 300px;
-                    overflow-y: auto;
-                    background: white;
-                    border: 1px solid #eee;
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin-bottom: 20px;
-                    font-size: 0.9rem;
-                }
-
-                .spinner {
-                  border: 4px solid #f3f3f3;
-                  width: 40px;
-                  height: 40px;
-                  border-radius: 50%;
-                  border-top-color: var(--primary-color);
-                  animation: spin 1s linear infinite;
-                  margin: 20px auto;
-                }
-                @keyframes spin {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-
-                /* New Styles for Home */
-                .home-hero {
-                    text-align: center;
-                    padding: 20px 0;
-                }
-                .home-title {
-                    font-size: 3rem;
-                    color: var(--primary-color);
-                    margin-bottom: 15px;
-                    font-weight: 700;
-                    letter-spacing: -1px;
-                }
-                .home-subtitle {
-                    font-size: 1.2rem;
-                    color: #666;
-                    margin-bottom: 40px;
-                    line-height: 1.6;
-                    max-width: 600px;
-                    margin-left: auto;
-                    margin-right: auto;
-                }
-                .features-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 30px;
-                    margin-bottom: 50px;
-                }
-                .feature-card {
-                    background: rgba(255,255,255,0.6);
-                    padding: 25px;
-                    border-radius: 16px;
-                    text-align: center;
-                    border: 1px solid rgba(255,255,255,0.8);
-                    transition: transform 0.3s ease;
-                }
-                .feature-card:hover {
-                    transform: translateY(-5px);
-                    background: rgba(255,255,255,0.9);
-                    box-shadow: 0 10px 20px rgba(0,0,0,0.05);
-                }
-                .feature-icon {
-                    font-size: 2.5rem;
-                    margin-bottom: 15px;
-                    display: block;
-                }
-                .feature-title {
-                    font-weight: 600;
-                    margin-bottom: 10px;
-                    color: var(--text-color);
-                    font-size: 1.1rem;
-                }
-                .feature-desc {
-                    font-size: 0.9rem;
-                    color: #777;
-                    line-height: 1.5;
-                }
-                .start-btn-large {
-                    padding: 18px 40px;
-                    font-size: 1.3rem;
-                    border-radius: 50px; /* Pill shape */
-                    background: linear-gradient(90deg, var(--primary-color), #3178E6);
-                    box-shadow: 0 10px 25px rgba(58, 134, 255, 0.4);
-                }
-                .start-btn-large:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 15px 30px rgba(58, 134, 255, 0.5);
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
 
                 /* Tooltip Styles */
@@ -1085,9 +981,160 @@ const App = () => {
                     opacity: 1;
                 }
                 .tooltip-content strong {
-                    color: #FFBE0B;
+                    color: var(--secondary-color);
                     display: inline-block;
                     margin-bottom: 2px;
+                }
+
+                /* Modal Styles */
+                .modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.7);
+                    backdrop-filter: blur(8px);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 1000;
+                }
+                .modal-content {
+                    background: #fff;
+                    padding: 30px;
+                    border-radius: 16px;
+                    max-width: 400px;
+                    text-align: center;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                    animation: popIn 0.3s ease-out;
+                    color: #333;
+                }
+                @keyframes popIn {
+                    0% { transform: scale(0.8); opacity: 0; }
+                    100% { transform: scale(1); opacity: 1; }
+                }
+                .modal-icon {
+                    font-size: 3rem;
+                    margin-bottom: 20px;
+                    display: block;
+                }
+                .modal-btn-group {
+                    display: flex;
+                    gap: 15px;
+                    margin-top: 25px;
+                }
+                .modal-btn-secondary {
+                    background-color: #e0e0e0;
+                    color: #333;
+                }
+                .modal-btn-secondary:hover {
+                    background-color: #d0d0d0;
+                }
+                
+                /* Other helper classes for Briefing/Feedback */
+                .transcript-container {
+                  height: 400px;
+                  overflow-y: auto;
+                  background-color: #f8f9fa;
+                  border: 1px solid var(--border-color);
+                  border-radius: 12px;
+                  padding: 20px;
+                  margin-bottom: 20px;
+                  color: #333;
+                }
+                .transcript-bubble {
+                  padding: 12px 18px;
+                  border-radius: 20px;
+                  margin-bottom: 12px;
+                  max-width: 80%;
+                  line-height: 1.5;
+                }
+                .transcript-bubble.user {
+                  background-color: var(--primary-color);
+                  color: white;
+                  margin-left: auto;
+                  border-bottom-right-radius: 5px;
+                }
+                .transcript-bubble.interviewer {
+                  background-color: #E9ECEF;
+                  color: #333;
+                  margin-right: auto;
+                  border-bottom-left-radius: 5px;
+                }
+                .briefing-text {
+                    background-color: #eaf2ff;
+                    border-left: 5px solid var(--primary-color);
+                    padding: 20px;
+                    margin: 25px 0;
+                    border-radius: 8px;
+                    font-style: normal;
+                    font-size: 1.05rem;
+                    line-height: 1.6;
+                    color: #445;
+                }
+                .score-circle {
+                    width: 150px;
+                    height: 150px;
+                    border-radius: 50%;
+                    background: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%);
+                    border: 10px solid;
+                    border-image-slice: 1;
+                    border-image-source: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    flex-direction: column;
+                    margin: 0 auto;
+                    font-size: 1.2rem;
+                    color: var(--primary-color);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+                }
+                .score-circle span {
+                    font-size: 3.5rem;
+                    font-weight: 700;
+                    line-height: 1;
+                }
+                .scores-detailed {
+                    display: flex;
+                    justify-content: space-around;
+                    margin-bottom: 30px;
+                    padding-bottom: 20px;
+                    border-bottom: 1px solid var(--border-color);
+                }
+                .score-item { text-align: center; }
+                .score-item h4 { margin: 0 0 8px 0; font-weight: 500; color: #777; font-size: 0.9rem; text-transform: uppercase; }
+                .score-item p { margin: 0; font-size: 1.8rem; font-weight: 600; color: #333; }
+                
+                .feedback-section {
+                    text-align: left;
+                    background-color: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+                }
+                .feedback-list li { margin-bottom: 8px; color: #444; line-height: 1.5; }
+                .feedback-summary {
+                    text-align: left;
+                    background-color: #f0f7ff;
+                    padding: 25px;
+                    border-radius: 12px;
+                    margin-bottom: 30px;
+                    border-left: 4px solid var(--primary-color);
+                    color: #444;
+                }
+                .transcript-view {
+                    text-align: left;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    background: white;
+                    border: 1px solid #eee;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    font-size: 0.9rem;
+                    color: #333;
                 }
 
             `}</style>
@@ -1099,222 +1146,266 @@ const App = () => {
                 <div className="grid-overlay"></div>
             </div>
 
-            <div className="container">
-                {screen === 'home' && (
+            {screen === 'home' ? (
+                <div className="landing-container">
                     <div className="home-hero">
-                        <h1 className="home-title">Ace Your Interview</h1>
+                        <h1 className="home-title">Master Your Next<br/>Tech Interview</h1>
                         <p className="home-subtitle">
-                            Master your communication skills with our AI-powered coach. 
-                            Practice real-time conversations, get instant feedback, and build confidence.
+                            The AI-powered coach that simulates real interviews. 
+                            Practice with voice, get resume-tailored questions, and receive instant actionable feedback.
                         </p>
                         
-                        <div className="features-grid">
-                            <div className="feature-card">
-                                <span className="feature-icon">🎙️</span>
-                                <div className="feature-title">Live Voice Simulation</div>
-                                <div className="feature-desc">Interactive audio interviews that feel just like the real thing.</div>
-                            </div>
-                            <div className="feature-card">
-                                <span className="feature-icon">📄</span>
-                                <div className="feature-title">Resume Analysis</div>
-                                <div className="feature-desc">Tailored questions based on your specific resume and projects.</div>
-                            </div>
-                            <div className="feature-card">
-                                <span className="feature-icon">📊</span>
-                                <div className="feature-title">Instant Feedback</div>
-                                <div className="feature-desc">Detailed scoring on clarity, relevance, and conciseness.</div>
-                            </div>
+                        <div className="btn-group">
+                            <button className="btn-lg btn-primary-gradient" onClick={() => setScreen('setup')}>
+                                Get Started
+                            </button>
+                            <button className="btn-lg btn-outline-gradient" onClick={() => document.querySelector('.features-row')?.scrollIntoView({behavior: 'smooth'})}>
+                                Learn More
+                            </button>
                         </div>
+                    </div>
 
-                        <button className="button start-btn-large" onClick={() => setScreen('setup')}>
-                            Start Practicing Now
-                        </button>
+                    <div className="features-row">
+                        <div className="glass-card">
+                            <span className="card-icon">🎙️</span>
+                            <div className="card-title">Real-Time Voice</div>
+                            <div className="card-desc">Experience a natural conversation. Speak your answers and get audio responses instantly.</div>
+                        </div>
+                        <div className="glass-card">
+                            <span className="card-icon">📄</span>
+                            <div className="card-title">Resume Intelligence</div>
+                            <div className="card-desc">Our AI analyzes your PDF resume to ask deep-dive questions about your actual projects.</div>
+                        </div>
+                        <div className="glass-card">
+                            <span className="card-icon">📊</span>
+                            <div className="card-title">Smart Scoring</div>
+                            <div className="card-desc">Receive a detailed scorecard on relevance, clarity, and technical accuracy after every session.</div>
+                        </div>
                     </div>
-                )}
-                {screen === 'setup' && (
-                    <div>
-                        <h1>Configure Interview</h1>
-                        <div className="form-group">
-                            <label htmlFor="role">Job Role</label>
-                            <input type="text" id="role" name="role" value={settings.role} onChange={handleSettingsChange} />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="topics">Skills / Topics</label>
-                            <input type="text" id="topics" name="topics" value={settings.topics} onChange={handleSettingsChange} />
-                        </div>
-                         <div className="form-group">
-                            <label htmlFor="language">Interview Language</label>
-                            <select id="language" name="language" value={settings.language} onChange={handleSettingsChange}>
-                                <option value="English">English</option>
-                                <option value="Hindi">Hindi</option>
-                                <option value="Telugu">Telugu</option>
-                                <option value="Spanish">Spanish</option>
-                                <option value="French">French</option>
-                                <option value="German">German</option>
-                                <option value="Japanese">Japanese</option>
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="voice">Interviewer Voice</label>
-                            <select id="voice" name="voice" value={settings.voice} onChange={handleSettingsChange}>
-                                <option value="Zephyr">Zephyr (Male)</option>
-                                <option value="Puck">Puck (Male)</option>
-                                <option value="Charon">Charon (Male)</option>
-                                <option value="Kore">Kore (Female)</option>
-                                <option value="Fenrir">Fenrir (Female)</option>
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="mode" style={{ display: 'flex', alignItems: 'center' }}>
-                                Practice Mode
-                                <div className="tooltip-container">
-                                    <span className="info-icon">i</span>
-                                    <div className="tooltip-content">
-                                        <strong>Standard:</strong> Natural conversation without strict time limits.<br/>
-                                        <strong>Timed:</strong> You have 90 seconds to answer each question for pressure training.
-                                    </div>
-                                </div>
-                            </label>
-                            <select id="mode" name="mode" value={settings.mode} onChange={handleSettingsChange}>
-                                <option value="standard">Standard Interview</option>
-                                <option value="timed">Timed Response (90s)</option>
-                            </select>
-                        </div>
-                         <div className="form-group">
-                            <label htmlFor="resume">Upload Resume (PDF - Optional)</label>
-                            <input 
-                                type="file" 
-                                id="resume" 
-                                accept=".pdf" 
-                                onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)} 
-                            />
-                        </div>
-                        <button className="button" onClick={handleStartInterview} disabled={isLoading}>
-                            {isLoading ? 'Preparing...' : 'Start Interview'}
-                        </button>
-                        {error && <p className="error">{error}</p>}
-                    </div>
-                )}
-                {screen === 'briefing' && (
-                    <div>
-                        <h2>Interview Briefing</h2>
-                        <div className="briefing-text">
-                           {briefingText || 'Generating briefing...'}
-                        </div>
-                        <p style={{textAlign: 'center'}}>The AI interviewer will now provide a spoken welcome. Please listen.</p>
-                        <button className="button" onClick={startLiveSession} disabled={isLoading}>
-                            {isLoading ? 'Please Wait...' : 'Ready to Begin'}
-                        </button>
-                         {error && <p className="error">{error}</p>}
-                    </div>
-                )}
-                {screen === 'interview' && (
-                     <div>
-                        <h2>Interview in Progress...</h2>
-                        {settings.mode === 'timed' && timeLeft !== null && (
-                            <div className={`timer ${timeLeft <= 10 ? 'warning' : ''}`}>
-                                {timeLeft}s
+                </div>
+            ) : (
+                <div className="container">
+                    {screen === 'setup' && (
+                        <div>
+                            <h1>Configure Interview</h1>
+                            <div className="form-group">
+                                <label htmlFor="role">Job Role</label>
+                                <input type="text" id="role" name="role" value={settings.role} onChange={handleSettingsChange} />
                             </div>
+                            <div className="form-group">
+                                <label htmlFor="topics">Skills / Topics</label>
+                                <input type="text" id="topics" name="topics" value={settings.topics} onChange={handleSettingsChange} />
+                            </div>
+                             <div className="form-group">
+                                <label htmlFor="language">Interview Language</label>
+                                <select id="language" name="language" value={settings.language} onChange={handleSettingsChange}>
+                                    <option value="English">English</option>
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="Telugu">Telugu</option>
+                                    <option value="Spanish">Spanish</option>
+                                    <option value="French">French</option>
+                                    <option value="German">German</option>
+                                    <option value="Japanese">Japanese</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="voice">Interviewer Voice</label>
+                                <select id="voice" name="voice" value={settings.voice} onChange={handleSettingsChange}>
+                                    <option value="Zephyr">Zephyr (Male)</option>
+                                    <option value="Puck">Puck (Male)</option>
+                                    <option value="Charon">Charon (Male)</option>
+                                    <option value="Kore">Kore (Female)</option>
+                                    <option value="Fenrir">Fenrir (Female)</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="mode" style={{ display: 'flex', alignItems: 'center' }}>
+                                    Practice Mode
+                                    <div className="tooltip-container">
+                                        <span className="info-icon">i</span>
+                                        <div className="tooltip-content">
+                                            <strong>Standard:</strong> Natural conversation without strict time limits.<br/>
+                                            <strong>Timed:</strong> You have 90 seconds to answer each question for pressure training.
+                                        </div>
+                                    </div>
+                                </label>
+                                <select id="mode" name="mode" value={settings.mode} onChange={handleSettingsChange}>
+                                    <option value="standard">Standard Interview</option>
+                                    <option value="timed">Timed Response (90s)</option>
+                                </select>
+                            </div>
+                             <div className="form-group">
+                                <label htmlFor="resume">Upload Resume (PDF - Optional)</label>
+                                <input 
+                                    type="file" 
+                                    id="resume" 
+                                    accept=".pdf" 
+                                    onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)} 
+                                />
+                            </div>
+                            <button className="button" onClick={handleStartInterview} disabled={isLoading}>
+                                {isLoading ? 'Preparing...' : 'Start Interview'}
+                            </button>
+                            {error && <p className="error">{error}</p>}
+                        </div>
+                    )}
+                    {screen === 'briefing' && (
+                        <div>
+                            <h2>Interview Briefing</h2>
+                            <div className="briefing-text">
+                               {briefingText || 'Generating briefing...'}
+                            </div>
+                            <p style={{textAlign: 'center', color: '#666'}}>The AI interviewer will now provide a spoken welcome. Please listen.</p>
+                            <button className="button" onClick={() => setShowPermissionModal(true)} disabled={isLoading}>
+                                {isLoading ? 'Please Wait...' : 'Ready to Begin'}
+                            </button>
+                             {error && <p className="error">{error}</p>}
+                        </div>
+                    )}
+                    {screen === 'interview' && (
+                         <div>
+                            <h2>Interview in Progress...</h2>
+                            {settings.mode === 'timed' && timeLeft !== null && (
+                                <div className={`timer ${timeLeft <= 10 ? 'warning' : ''}`}>
+                                    {timeLeft}s
+                                </div>
+                            )}
+                            <div className="transcript-container">
+                                {transcript.map((entry, index) => (
+                                    <div key={index} className={`transcript-bubble ${entry.speaker}`}>
+                                        <strong>{entry.speaker === 'user' ? 'You' : 'Interviewer'}:</strong> {entry.text}
+                                    </div>
+                                ))}
+                            </div>
+                            <button className="button secondary" onClick={stopInterview}>End Interview</button>
+                        </div>
+                    )}
+                     {screen === 'feedback' && (
+                        <div>
+                            <h2>Interview Feedback</h2>
+                            {isLoading && (
+                              <div style={{textAlign: 'center', color: '#333'}}>
+                                <div className="spinner"></div>
+                                <p>Analyzing your performance...</p>
+                              </div>
+                            )}
+                            {error && <p className="error">{error}</p>}
+                            {feedback && !isLoading && (
+                                <div className="feedback-container">
+                                    <div className="score-overall-container">
+                                        <div className="score-circle">
+                                            <span>{feedback.overall}</span>/10
+                                        </div>
+                                        <h3>Overall Score</h3>
+                                    </div>
+
+                                    <div className="scores-detailed">
+                                        <div className="score-item">
+                                            <h4>Relevance</h4>
+                                            <p>{feedback.relevance}/10</p>
+                                        </div>
+                                        <div className="score-item">
+                                            <h4>Clarity</h4>
+                                            <p>{feedback.clarity}/10</p>
+                                        </div>
+                                        <div className="score-item">
+                                            <h4>Conciseness</h4>
+                                            <p>{feedback.conciseness}/10</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="feedback-summary">
+                                        <h3>Executive Summary</h3>
+                                        <p>{feedback.summary}</p>
+                                    </div>
+                                    
+                                    <div className="feedback-section">
+                                        <h3>💪 Strengths</h3>
+                                        <ul className="feedback-list">
+                                            {feedback.strengths.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ul>
+                                    </div>
+
+                                    <div className="feedback-section">
+                                        <h3>📈 Areas for Improvement</h3>
+                                        <ul className="feedback-list">
+                                            {feedback.improvements.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ul>
+                                    </div>
+                                    
+                                    <div className="feedback-section">
+                                        <h3>🚀 Actionable Tips</h3>
+                                        <ul className="feedback-list">
+                                            {feedback.tips.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ul>
+                                    </div>
+                                    
+                                    <button className="transcript-toggle" onClick={() => setShowFullTranscript(!showFullTranscript)}>
+                                        {showFullTranscript ? "Hide Transcript" : "View Analyzed Transcript"}
+                                    </button>
+                                    
+                                    {showFullTranscript && (
+                                        <div className="transcript-view">
+                                            {transcript.map((entry, index) => (
+                                                <div key={index} style={{marginBottom: '10px'}}>
+                                                    <strong>{entry.speaker === 'user' ? 'You' : 'Interviewer'}:</strong> {entry.text}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <button className="button" onClick={() => {
+                                        setScreen('home');
+                                        setTranscript([]);
+                                        setFeedback(null);
+                                        setResumeAnalysis('');
+                                        setResumeFile(null);
+                                        setShowFullTranscript(false);
+                                    }}>
+                                        Back to Home
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+            
+            {showPermissionModal && (
+                <div className="modal-overlay">
+                    <div className="modal-content">
+                        {permissionDenied ? (
+                            <>
+                                <span className="modal-icon" style={{color: '#FF3B30'}}>⚠️</span>
+                                <h3>Microphone Access Denied</h3>
+                                <p>We couldn't access your microphone. This is usually because permission was blocked.</p>
+                                <div style={{textAlign: 'left', margin: '15px 0', background: '#f5f5f5', padding: '15px', borderRadius: '8px', fontSize: '0.9rem', color: '#333'}}>
+                                    <strong>To fix this:</strong>
+                                    <ol style={{paddingLeft: '20px', margin: '5px 0', lineHeight: '1.6'}}>
+                                        <li>Click the 🔒 <strong>Lock icon</strong> in your browser address bar.</li>
+                                        <li>Find <strong>Microphone</strong> and toggle it to <strong>On/Allow</strong>.</li>
+                                        <li>Refresh the page and try again.</li>
+                                    </ol>
+                                </div>
+                                <div className="modal-btn-group">
+                                    <button className="button modal-btn-secondary" onClick={() => setShowPermissionModal(false)}>Close</button>
+                                    <button className="button" onClick={() => window.location.reload()}>Refresh Page</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <span className="modal-icon">🎙️</span>
+                                <h3>Microphone Access Needed</h3>
+                                <p>To simulate a real interview, we need to hear your voice. The AI listens to your responses in real-time.</p>
+                                <div className="modal-btn-group">
+                                    <button className="button modal-btn-secondary" onClick={() => setShowPermissionModal(false)}>Cancel</button>
+                                    <button className="button" onClick={confirmPermission}>Enable Microphone</button>
+                                </div>
+                            </>
                         )}
-                        <div className="transcript-container">
-                            {transcript.map((entry, index) => (
-                                <div key={index} className={`transcript-bubble ${entry.speaker}`}>
-                                    <strong>{entry.speaker === 'user' ? 'You' : 'Interviewer'}:</strong> {entry.text}
-                                </div>
-                            ))}
-                        </div>
-                        <button className="button secondary" onClick={stopInterview}>End Interview</button>
                     </div>
-                )}
-                 {screen === 'feedback' && (
-                    <div>
-                        <h2>Interview Feedback</h2>
-                        {isLoading && (
-                          <div>
-                            <div className="spinner"></div>
-                            <p style={{textAlign: 'center'}}>Analyzing your performance...</p>
-                          </div>
-                        )}
-                        {error && <p className="error">{error}</p>}
-                        {feedback && !isLoading && (
-                            <div className="feedback-container">
-                                <div className="score-overall-container">
-                                    <div className="score-circle">
-                                        <span>{feedback.overall}</span>/10
-                                    </div>
-                                    <h3>Overall Score</h3>
-                                </div>
-
-                                <div className="scores-detailed">
-                                    <div className="score-item">
-                                        <h4>Relevance</h4>
-                                        <p>{feedback.relevance}/10</p>
-                                    </div>
-                                    <div className="score-item">
-                                        <h4>Clarity</h4>
-                                        <p>{feedback.clarity}/10</p>
-                                    </div>
-                                    <div className="score-item">
-                                        <h4>Conciseness</h4>
-                                        <p>{feedback.conciseness}/10</p>
-                                    </div>
-                                </div>
-
-                                <div className="feedback-summary">
-                                    <h3>Executive Summary</h3>
-                                    <p>{feedback.summary}</p>
-                                </div>
-                                
-                                <div className="feedback-section">
-                                    <h3>💪 Strengths</h3>
-                                    <ul className="feedback-list">
-                                        {feedback.strengths.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ul>
-                                </div>
-
-                                <div className="feedback-section">
-                                    <h3>📈 Areas for Improvement</h3>
-                                    <ul className="feedback-list">
-                                        {feedback.improvements.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ul>
-                                </div>
-                                
-                                <div className="feedback-section">
-                                    <h3>🚀 Actionable Tips</h3>
-                                    <ul className="feedback-list">
-                                        {feedback.tips.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ul>
-                                </div>
-                                
-                                <button className="transcript-toggle" onClick={() => setShowFullTranscript(!showFullTranscript)}>
-                                    {showFullTranscript ? "Hide Transcript" : "View Analyzed Transcript"}
-                                </button>
-                                
-                                {showFullTranscript && (
-                                    <div className="transcript-view">
-                                        {transcript.map((entry, index) => (
-                                            <div key={index} style={{marginBottom: '10px'}}>
-                                                <strong>{entry.speaker === 'user' ? 'You' : 'Interviewer'}:</strong> {entry.text}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <button className="button" onClick={() => {
-                                    setScreen('home');
-                                    setTranscript([]);
-                                    setFeedback(null);
-                                    setResumeAnalysis('');
-                                    setResumeFile(null);
-                                    setShowFullTranscript(false);
-                                }}>
-                                    Back to Home
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
         </>
     );
 };
