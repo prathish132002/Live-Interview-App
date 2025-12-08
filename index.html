@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +7,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Fonts for new Home Page -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#0da6f2",
+            "background-light": "#f5f7f8",
+            "background-dark": "#101c22",
+            // Custom colors for 'Vibrant Tropical Pop' setup screen
+            "tropical-coral": "#FF6B6B",    // Bright cheerful coral
+            "tropical-turquoise": "#2EC4B6",  // Bright cheerful turquoise
+            "pastel-yellow": "#FFD97D",    // Complementary pastel yellow
+            "pastel-pink": "#F89AD3",      // Complementary pastel pink
+            "deep-navy": "#0A1128",        // Deep navy for text
+            "airy-cream": "#FFFDD0",       // Light airy cream for inputs
+            "sunny-yellow": "#FFD700",    // Bold sunny yellow for button
+            "mango-orange": "#FF8C00",    // Rich mango orange for button hover
+          },
+          fontFamily: {
+            "display": ["Inter", "sans-serif"]
+          },
+          borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px", "2xl": "1.5rem"},
+        },
+      },
+    }
+  </script>
+
   <script type="module" src="index.tsx"></script>
 <script type="importmap">
 {
@@ -15,6 +48,7 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
     "remarkable": "https://aistudiocdn.com/remarkable@^2.0.1",
     "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1",
     "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
@@ -23,7 +57,7 @@
 }
 </script>
 </head>
-<body>
+<body class="bg-background-light dark:bg-background-dark font-display">
   <div id="root"></div>
 </body>
 </html>

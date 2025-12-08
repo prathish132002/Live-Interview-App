@@ -1,7 +1,8 @@
 {
   "description": "An AI-powered interview coach to help you practice for job interviews and get instant feedback.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ],
   "name": "Interview Simulation "
 }
