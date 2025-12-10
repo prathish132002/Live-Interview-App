@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="dark h-full">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,6 +10,8 @@
   <!-- Fonts for new Home Page -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <!-- Material Icons for the new interview design -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
   
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script>
@@ -18,9 +20,18 @@
       theme: {
         extend: {
           colors: {
-            "primary": "#0da6f2",
-            "background-light": "#f5f7f8",
-            "background-dark": "#101c22",
+            "primary": "#0da6f2", // Keep original primary for home
+            "interview-primary": "#F28C8C", // New primary for interview screen
+            "background-light": "#F7F8FC",
+            "background-dark": "#121829",
+            "surface-light": "#FFFFFF",
+            "surface-dark": "#1E293B",
+            "text-light": "#475569",
+            "text-dark": "#CBD5E1",
+            "heading-light": "#1E293B",
+            "heading-dark": "#FFFFFF",
+            "gradient-start": "#A881FF",
+            "gradient-end": "#6C63FF",
             // Custom colors for 'Vibrant Tropical Pop' setup screen
             "tropical-coral": "#FF6B6B",    // Bright cheerful coral
             "tropical-turquoise": "#2EC4B6",  // Bright cheerful turquoise
@@ -32,9 +43,14 @@
             "mango-orange": "#FF8C00",    // Rich mango orange for button hover
           },
           fontFamily: {
-            "display": ["Inter", "sans-serif"]
+            "display": ["Inter", "sans-serif"],
+            "poppins": ["Poppins", "sans-serif"]
           },
-          borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px", "2xl": "1.5rem"},
+          borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px", "2xl": "1.5rem", "3xl": "1.5rem"},
+          animation: {
+            'spin-slow': 'spin 4s linear infinite',
+            'border-width': 'border-width 3s infinite alternate',
+          },
         },
       },
     }
@@ -57,7 +73,7 @@
 }
 </script>
 </head>
-<body class="bg-background-light dark:bg-background-dark font-display">
-  <div id="root"></div>
+<body class="bg-background-light dark:bg-background-dark font-display min-h-screen h-full">
+  <div id="root" class="h-full"></div>
 </body>
 </html>

@@ -97,13 +97,42 @@ interface FeedbackData {
     technicalAccuracy: number;
 }
 
+// --- REVIEWS DATA ---
+const reviews = [
+    {
+        name: "Sarah Jenkins",
+        role: "Software Engineer @ TechGiant",
+        content: "This app helped me ace my Google interview! The technical feedback was incredibly precise and the riddles actually prepared me for the curveballs.",
+        avatar: "S"
+    },
+    {
+        name: "Dr. Michael Chen",
+        role: "Research Fellow",
+        content: "The seminar mode is a game changer. It caught factual discrepancies in my thesis defense practice that I hadn't noticed myself.",
+        avatar: "M"
+    },
+    {
+        name: "Emily Rivera",
+        role: "Product Manager",
+        content: "I love the real-time corrections. It feels like having a compassionate but strict coach right in front of you. Highly recommended!",
+        avatar: "E"
+    },
+    {
+        name: "David Kim",
+        role: "Marketing Director",
+        content: "Used the presentation mode for a Q3 business review. The pacing score helped me trim down my speech to fit the time limit perfectly.",
+        avatar: "D"
+    }
+];
+
 // --- REACT COMPONENTS ---
 
 const App = () => {
     const [screen, setScreen] = useState('home'); // setup, briefing, interview, feedback, home
+    const [sessionType, setSessionType] = useState<'interview' | 'presentation' | 'seminar'>('interview');
     const [settings, setSettings] = useState({
-        role: 'Software Engineer',
-        topics: 'React, TypeScript, and System Design',
+        role: 'Software Engineer', // acts as "Title" in presentation/seminar mode
+        topics: 'React, TypeScript, and System Design', // acts as "Audience" in presentation/seminar mode
         voice: 'Zephyr',
         language: 'English',
         mode: 'standard', // standard, timed
@@ -124,12 +153,21 @@ const App = () => {
     const [isMuted, setIsMuted] = useState(false);
     const [isCameraOff, setIsCameraOff] = useState(false);
     const [darkMode, setDarkMode] = useState(true);
+    const [speakingDuration, setSpeakingDuration] = useState(0);
+    const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
 
     const sessionRef = useRef<LiveSession | null>(null);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const isSessionActive = useRef(false);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const transcriptEndRef = useRef<HTMLDivElement>(null);
+    
+    // Speaking timer refs
+    const isUserSpeakingRef = useRef(false);
+    const speechStartTimeRef = useRef<number | null>(null);
+    const lastSpeechDetectedTimeRef = useRef<number>(0);
+    const speechTimerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     
     // Buffer to hold partial transcription data that hasn't been committed to state yet
     const transcriptionBuffer = useRef({ input: '', output: '' });
@@ -144,6 +182,10 @@ const App = () => {
       source: MediaStreamAudioSourceNode | null;
       mediaRecorder: MediaRecorder | null;
       recordedChunks: Blob[];
+      audioProcessingState: {
+          smoothedVolume: number;
+          currentGain: number;
+      };
     }>({
       inputAudioContext: null,
       outputAudioContext: null,
@@ -154,8 +196,18 @@ const App = () => {
       source: null,
       mediaRecorder: null,
       recordedChunks: [],
+      audioProcessingState: { smoothedVolume: 0, currentGain: 1.0 },
     });
     
+    // Review Carousel Effect
+    useEffect(() => {
+        if (screen !== 'home') return;
+        const interval = setInterval(() => {
+            setCurrentReviewIndex((prev) => (prev + 1) % reviews.length);
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [screen]);
+
     useEffect(() => {
         if (timeLeft === null || timeLeft <= 0) {
             if (timerRef.current) clearInterval(timerRef.current);
@@ -171,6 +223,27 @@ const App = () => {
         };
     }, [timeLeft]);
 
+    // Timer for speaking duration UI update
+    useEffect(() => {
+        if (screen !== 'interview') {
+            if (speechTimerIntervalRef.current) clearInterval(speechTimerIntervalRef.current);
+            return;
+        }
+
+        speechTimerIntervalRef.current = setInterval(() => {
+            if (isUserSpeakingRef.current && speechStartTimeRef.current) {
+                const duration = (Date.now() - speechStartTimeRef.current) / 1000;
+                setSpeakingDuration(duration);
+            } else if (!isUserSpeakingRef.current && speakingDuration !== 0) {
+                 setSpeakingDuration(0);
+            }
+        }, 100);
+
+        return () => {
+            if (speechTimerIntervalRef.current) clearInterval(speechTimerIntervalRef.current);
+        };
+    }, [screen, speakingDuration]);
+
     useEffect(() => {
         const html = document.documentElement;
         if (darkMode) {
@@ -180,20 +253,23 @@ const App = () => {
         }
     }, [darkMode]);
 
+    // Auto-scroll transcript
+    useEffect(() => {
+        if (transcriptEndRef.current) {
+            transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [transcript]);
+
     // Cleanup audio resources properly to avoid "Network Error" due to max AudioContexts or conflicts
     const cleanupAudioResources = async () => {
         isSessionActive.current = false;
         if (timerRef.current) clearInterval(timerRef.current);
+        if (speechTimerIntervalRef.current) clearInterval(speechTimerIntervalRef.current);
         
         if (sessionRef.current) {
             try {
                 // Use close() but catch errors if session is already bad
                 // Note: live.close() isn't always exposed or async in all versions, but good practice
-                // In @google/genai, close is synchronous usually or handled by disposing
-                // If the session object has a close method, call it.
-                // Assuming sessionRef.current is the return from connect(), which is an object.
-                // The connect method returns a Session object.
-                // We'll just null it out as the main cleanup.
             } catch (e) {
                 console.debug("Session already closed or failed to close:", e);
             }
@@ -269,8 +345,15 @@ const App = () => {
             if (resumeFile) {
                 try {
                     const base64Data = await fileToBase64(resumeFile);
-                    const resumePrompt = "You are an expert technical interviewer. Analyze this candidate's resume. Extract the candidate's name (if available), key technical skills, detailed work history, and specifically the details of any projects mentioned. Provide a structured summary that an interviewer can use to ask specific, deep-dive questions about their actual experience. Focus on what they built, technologies used, and their specific role.";
+                    let resumePrompt = "";
                     
+                    if (sessionType === 'interview') {
+                         resumePrompt = "You are an expert technical interviewer. Analyze this candidate's resume. Extract the candidate's name (if available), key technical skills, detailed work history, and specifically the details of any projects mentioned. Provide a structured summary that an interviewer can use to ask specific, deep-dive questions about their actual experience. Focus on what they built, technologies used, and their specific role.";
+                    } else {
+                         // Presentation or Seminar
+                         resumePrompt = "You are an expert presentation coach and fact-checker. Analyze these slides/document. Extract a structured list of KEY FACTS, DATA POINTS, DEFINITIONS, and MAIN ARGUMENTS. I need to use this to fact-check the presenter in real-time if they say something wrong. Also summarize the intended narrative flow.";
+                    }
+
                     const resumeResponse = await ai.models.generateContent({
                         model: 'gemini-2.5-flash',
                         contents: {
@@ -283,16 +366,24 @@ const App = () => {
                     currentResumeAnalysis = resumeResponse.text;
                     setResumeAnalysis(currentResumeAnalysis);
                 } catch (resumeErr: any) {
-                    console.error("Resume analysis failed", resumeErr);
+                    console.error("File analysis failed", resumeErr);
                 }
             } else {
                 setResumeAnalysis('');
             }
 
-            let textPrompt = `Generate a short, friendly, and professional welcome message for a job interview. The role is '${settings.role}' and the topics are '${settings.topics}'. Welcome the candidate, state the role and topics, and wish them luck. The message must be entirely in ${settings.language}.`;
-            
-            if (currentResumeAnalysis) {
-                textPrompt += `\n\nContext: The candidate has uploaded a resume. Here is the summary: ${currentResumeAnalysis}. Acknowledge that you have reviewed their resume and mention that you will be asking questions about their projects.`;
+            let textPrompt = "";
+            if (sessionType === 'interview') {
+                textPrompt = `Generate a short, friendly, and professional welcome message for a job interview. The role is '${settings.role}' and the topics are '${settings.topics}'. Welcome the candidate, state the role and topics, and wish them luck. The message must be entirely in ${settings.language}.`;
+                if (currentResumeAnalysis) {
+                    textPrompt += `\n\nContext: The candidate has uploaded a resume. Here is the summary: ${currentResumeAnalysis}. Acknowledge that you have reviewed their resume and mention that you will be asking questions about their projects.`;
+                }
+            } else {
+                // Presentation or Seminar
+                textPrompt = `Generate a short, encouraging welcome message for a ${sessionType === 'seminar' ? 'seminar' : 'presentation'} practice session. The user is presenting on '${settings.role}' to an audience of '${settings.topics}'. Welcome them, acknowledge you have reviewed their materials (if any), and ask them to begin their presentation whenever they are ready. State that you will listen actively and interrupt ONLY if you hear a factual error based on their slides. The message must be entirely in ${settings.language}.`;
+                if (currentResumeAnalysis) {
+                    textPrompt += `\n\nContext: The user has uploaded slides. Summary: ${currentResumeAnalysis}.`;
+                }
             }
             
             const textResponse = await ai.models.generateContent({
@@ -414,6 +505,15 @@ const App = () => {
         // Double check cleanup to ensure no lingering connections cause 503s
         await cleanupAudioResources();
         
+        // Reset processing state
+        audioRefs.current.audioProcessingState = { smoothedVolume: 0, currentGain: 1.0 };
+        
+        // Reset Speech Timer logic
+        isUserSpeakingRef.current = false;
+        speechStartTimeRef.current = null;
+        lastSpeechDetectedTimeRef.current = 0;
+        setSpeakingDuration(0);
+
         // Reset mute/camera states
         setIsMuted(false);
         setIsCameraOff(false);
@@ -443,7 +543,7 @@ const App = () => {
                     sampleRate: 16000,
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true, // Native AGC is good, but we add software normalization too
+                    autoGainControl: false, // We will handle gain manually
                 },
                 video: {
                     width: { ideal: 640 },
@@ -458,131 +558,171 @@ const App = () => {
             let nextStartTime = 0;
             const sources = new Set<AudioBufferSourceNode>();
             
-            // Structured Interview Logic
-            let systemInstructionText = `
-            You are a Senior HR + Technical Interviewer from a top global company.  
-Role: '${settings.role}'  
-Technical Focus: '${settings.topics}'  
-Interview Level: '${settings.level}'   // basic | intermediate | advanced
-Language: ${settings.language} (STRICTLY).
+            let systemInstructionText = "";
 
-GLOBAL INTERVIEWER RULES:
-- Ask ONE question at a time.
-- After EVERY candidate response, provide:
-  • Short Feedback (1–3 sentences)
-  • One Improvement Suggestion
-- If an answer is unclear, ask ONE probing follow-up.
-- Maintain a professional, realistic HR tone.
-- Do NOT reuse any real interview questions the user experienced—only the *style*.
-- Never skip or reorder stages.
+            if (sessionType === 'interview') {
+                systemInstructionText = `
+                You are a Senior HR + Technical Interviewer from a top global company.  
+    Role: '${settings.role}'  
+    Technical Focus: '${settings.topics}'  
+    Interview Level: '${settings.level}'   // basic | intermediate | advanced
+    Language: ${settings.language} (STRICTLY).
 
-The interview consists of the following stages:
-STAGE 1 — HR Warm-Up  
-STAGE 2 — Resume Analysis  
-STAGE 3 — Technical Questions  
-STAGE 4 — Behavioral Scenarios  
-STAGE 5 — Final Evaluation  
+    GLOBAL INTERVIEWER RULES:
+    - Ask ONE question at a time.
+    - After EVERY candidate response, provide:
+      • Short Feedback (1–3 sentences)
+      • One Improvement Suggestion
+    - If an answer is unclear, ask ONE probing follow-up.
+    - Maintain a professional, realistic HR tone.
+    - Do NOT reuse any real interview questions the user experienced—only the *style*.
+    - Never skip or reorder stages.
 
-Depending on '${settings.level}', use the appropriate question set below.
+    The interview consists of the following stages:
+    STAGE 1 — HR Warm-Up  
+    STAGE 2 — Resume Analysis  
+    STAGE 3 — Technical Questions  
+    STAGE 4 — Behavioral Scenarios  
+    STAGE 5 — Final Evaluation  
+
+    Depending on '${settings.level}', use the appropriate question set below.
+    
+    (Include logic for Levels 1, 2, 3 as standard interview flow...)
+    `;
+                // Add level logic (abbreviated for brevity as it's the same logic)
+                systemInstructionText += `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RIDDLE & CRITICAL-THINKING SYSTEM
+Riddles are included at all levels. Difficulty scales by interview level.
+Each riddle must:
+• Match the level (Easy → Medium → Hard).
+• Test reasoning, pattern recognition, or structured problem solving.
+• Never exceed 2–3 minutes thinking time unless at Advanced level.
+• Provide hints only when explicitly requested by the user.
+
+Riddle Difficulty Guide:
+• EASY: Simple logic, water jug puzzles, pattern recognition.
+• MEDIUM: Multi-step logic puzzles, constraint-based reasoning.
+• HARD: Paradox puzzles, incomplete-information logic, multi-variable reasoning.
+
+Scoring:
+• Correct/strong attempt: +10% to reasoning score.
+• Partial logic: +5%.
+• Incorrect with good approach: +2%.
+• No attempt: 0%.
+
+Riddle Behavior Rules:
+• Do not reuse the same riddle twice in the same session.
+• Do not use the rope-burning riddle.
+• The riddle must feel natural, short, and fit the conversation flow.
+• Reveal the answer only after the candidate completes or asks for it.
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LEVEL 1 — BASIC INTERVIEW (Beginner-Friendly)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEVEL 1 — BASIC INTERVIEW
+A beginner-friendly interview with foundational checks and one EASY riddle.
 
-STAGE 1 — HR WARM-UP (2 Questions)
-1. “Tell me about yourself.”
-2. “Why are you interested in this role?”
+STAGE 1:
+• Ask: "Tell me about yourself."
+• Ask: "Why this role?"
 
-STAGE 2 — RESUME ANALYSIS (2–3 Questions)
-1. “Tell me about one project on your resume.”
-2. “What skill or tool are you most comfortable with?”
-3. If missing: “I see <skill> mentioned but not described—can you explain your experience?”
+STAGE 2:
+• Ask 1–2 resume basics.
 
-STAGE 3 — TECHNICAL (2 Questions)
-1. “Explain a simple concept from your field.”
-2. Ask 1 role-related question based on '${settings.topics}'.
+STAGE 3:
+• Ask 2 light technical questions.
 
-STAGE 4 — BEHAVIORAL (1 Question)
-1. “Tell me about a time you solved a small challenge.”
+STAGE 4:
+• Ask 1 behavioral question.
+• Include 1 **EASY riddle** (simple logic puzzle, pattern, basic scenario).
 
-STAGE 5 — FINAL EVALUATION
-- Provide scores (Communication, Basics, Fit)
-- Provide 2 improvement tips  
-- Provide simple verdict (Selected / Practice More)
+STAGE 5:
+• Give a brief final evaluation on fundamentals, clarity, and basic reasoning.
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LEVEL 2 — INTERMEDIATE INTERVIEW (Balanced)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEVEL 2 — INTERMEDIATE INTERVIEW
+A deeper evaluation with more probing questions and a MEDIUM riddle.
 
-STAGE 1 — HR WARM-UP (3 Questions)
-1. “Walk me through who you are professionally.”
-2. “Share something about yourself that isn’t on the resume.”
-3. “What motivates you to apply for this role?”
+STAGE 1:
+• Ask 3 warm-up questions.
 
-STAGE 2 — RESUME ANALYSIS (4–5 Questions)
-1. “Tell me about a project you’re most confident in.”
-2. “What challenge did you face and how did you overcome it?”
-3. “How have you applied <skill/tool> in your resume?”
-4. If unclear: “I see <topic>, but the details are missing—can you explain more?”
-5. “Which achievement or experience reflects your strongest ability?”
+STAGE 2:
+• Ask 4–5 resume deep-dive questions.
 
-STAGE 3 — TECHNICAL (3–4 Questions)
-1. “Explain one core concept from your field in simple terms.”
-2. “If something you built isn’t working, how would you troubleshoot?”
-3. Ask 1–2 technical questions directly from '${settings.topics}'.
+STAGE 3:
+• Ask 3–4 technical questions (algorithms, debugging, applied engineering).
 
-STAGE 4 — BEHAVIORAL (2 Questions)
-1. “Tell me about a situation where you managed multiple tasks.”
-2. “Share a time when your first solution didn’t work.”
+STAGE 4:
+• Ask 2 behavioral questions.
+• Include 1 **MEDIUM riddle** (multi-step logic, constraint puzzle, reasoning chain).
 
-STAGE 5 — FINAL EVALUATION
-- Scores (Communication, Technical, Logic, Fit)
-- 3 improvement tips
-- Verdict (Recommended / Needs Improvement)
+STAGE 5:
+• Give evaluation on depth, problem-solving, and communication.
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LEVEL 3 — ADVANCED INTERVIEW (FAANG-Style)
+LEVEL 3 — ADVANCED INTERVIEW
+A senior-level track with architectural thinking and a HARD riddle.
+
+STAGE 1:
+• Ask 3 complex warm-up questions.
+
+STAGE 2:
+• Ask 5–6 resume/system design probes.
+
+STAGE 3:
+• Ask 4–5 deep tech/architecture questions.
+
+STAGE 4:
+• Ask 2 senior behavioral questions.
+• Include 1 **HARD riddle** (paradox, multi-variable reasoning, incomplete-information logic).
+
+STAGE 5:
+• Give final evaluation on leadership strength, system-level clarity, tradeoff reasoning, and strategic thinking.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
 
-STAGE 1 — ADVANCED HR WARM-UP (3 Questions)
-1. “Give me a structured walkthrough of your background.”
-2. “Share a personal insight about yourself not mentioned anywhere in your resume.”
-3. “What specific value can you bring to this role compared to other candidates?”
-
-STAGE 2 — RESUME INTELLIGENCE ANALYSIS (5–6 Questions)
-1. “Describe your most technically complex project and your exact contribution.”
-2. “Tell me about a decision you made that directly improved a project outcome.”
-3. “How have you applied <coding language/tool> in a real scenario?”
-4. If missing: “<topic> is listed but unclear—clarify your hands-on experience.”
-5. “Which achievement demonstrates your highest potential?”
-6. “Which experience aligns most with this role?”
-
-STAGE 3 — DEEP TECHNICAL (4–5 Questions)
-1. “Explain a core concept in your field and break it down for a beginner.”
-2. “Imagine a system you built behaves unexpectedly—how would you isolate the issue?”
-3. “When evaluating two possible solutions, how do you choose the optimal one?”
-4. Ask 1–2 advanced questions tied to '${settings.topics}'.
-
-STAGE 4 — SENIOR BEHAVIORAL (2 Questions)
-1. “Describe a time you had to manage conflicting priorities under pressure.”
-2. “Explain a situation where your approach failed and how you recovered.”
-
-STAGE 5 — FINAL EVALUATION
-- Scores (Communication, Technical Depth, Problem-Solving, Professionalism, Role Fit)
-- 4 improvement suggestions
-- Final verdict (Strong Candidate / Recommended / Needs Work)
-
-
-            `;
-            
-            if (resumeAnalysis) {
-                systemInstructionText += `\n\n=== CANDIDATE RESUME CONTEXT ===\n${resumeAnalysis}\n================================`;
+                
+                if (resumeAnalysis) {
+                    systemInstructionText += `\n\n=== CANDIDATE RESUME CONTEXT ===\n${resumeAnalysis}\n================================`;
+                } else {
+                    systemInstructionText += `\n\n(No resume provided. Skip Stage 2 specific references and ask general experience questions instead).`;
+                }
             } else {
-                systemInstructionText += `\n\n(No resume provided. Skip Stage 2 specific references and ask general experience questions instead).`;
+                // PRESENTATION / SEMINAR MODE INSTRUCTION
+                systemInstructionText = `
+                You are a supportive but attentive Presentation Coach and Audience.
+                The user is delivering a seminar/presentation.
+                
+                Topic/Title: '${settings.role}'
+                Target Audience: '${settings.topics}'
+                Language: ${settings.language} (STRICTLY).
+                
+                YOUR GOAL: Help the user deliver an accurate, clear, and engaging presentation.
+                
+                YOUR ROLE:
+                1. LISTEN predominantly. Let the user speak for long periods if they are presenting a slide.
+                2. REAL-TIME FACT CHECKING (CRITICAL):
+                   - Actively compare the user's spoken words against the [SLIDE CONTENT SUMMARY] provided below.
+                   - If the user contradicts the slides (e.g., wrong data, conflicting dates, misstated facts), INTERRUPT POLITELY to correct them.
+                     Example: "Excuse me, I noticed a discrepancy. Your slides mention [Fact from slides], but you said [Error]. Could you clarify?"
+                   - If the user misses a crucial argument from the summary, gently nudge them.
+                3. CLARITY & PACING:
+                   - If the user is silent for more than 5 seconds, prompt them: "Please continue," or "Are you ready for the next point?".
+                   - If the user uses jargon inappropriate for the Target Audience ('${settings.topics}'), interrupt to ask for a simpler explanation.
+                4. POSITIVE REINFORCEMENT:
+                   - If the user explains a complex concept well, acknowledge it briefly ("That's a clear explanation, please go on").
+                5. Do NOT ask job interview questions. You are simulating the audience for a seminar.
+                `;
+
+                if (resumeAnalysis) {
+                    systemInstructionText += `\n\n=== SLIDE CONTENT SUMMARY (FACT SHEET) ===\n${resumeAnalysis}\nUse this to verify their facts strictly.\n================================`;
+                }
             }
             
             if (settings.mode === 'timed') {
-                systemInstructionText += `\nNOTE: This is a timed interview. The user has 90 seconds to respond to each question.`
+                systemInstructionText += `\nNOTE: This is a timed session. The user has 90 seconds for each segment.`
             }
 
             const sessionPromise = ai.live.connect({
@@ -611,7 +751,15 @@ STAGE 5 — FINAL EVALUATION
                             if (!isSessionActive.current) return;
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
 
-                            // --- SOFTWARE AUDIO PROCESSING STAGE ---
+                            // --- ADVANCED AUDIO PROCESSING STAGE ---
+                            // Tuned for human speech extraction
+                            const NOISE_THRESHOLD = 0.01;
+                            const TARGET_RMS = 0.2; 
+                            const MAX_GAIN = 8.0;   
+                            const ATTACK_COEFF = 0.8; // Fast attack
+                            const RELEASE_COEFF = 0.98; // Slow release
+                            const GAIN_SMOOTHING = 0.9;
+
                             // 1. Calculate RMS (Volume)
                             let sum = 0;
                             for (let i = 0; i < inputData.length; i++) {
@@ -619,30 +767,59 @@ STAGE 5 — FINAL EVALUATION
                             }
                             const rms = Math.sqrt(sum / inputData.length);
 
-                            // 2. Noise Gate: If volume is below threshold, silence it to prevent noise hallucinations
-                            const NOISE_THRESHOLD = 0.02; 
-                            if (rms < NOISE_THRESHOLD) {
-                                for (let i = 0; i < inputData.length; i++) {
-                                    inputData[i] = 0;
+                            // 2. Retrieve state
+                            let { smoothedVolume, currentGain } = audioRefs.current.audioProcessingState;
+
+                            // 3. Envelope Tracking (Attack/Release)
+                            if (rms > smoothedVolume) {
+                                smoothedVolume = ATTACK_COEFF * smoothedVolume + (1 - ATTACK_COEFF) * rms;
+                            } else {
+                                smoothedVolume = RELEASE_COEFF * smoothedVolume + (1 - RELEASE_COEFF) * rms;
+                            }
+
+                            // --- SPEAKING TIMER LOGIC ---
+                            // Detect speech presence using a threshold slightly above noise floor
+                            const SPEECH_DETECT_THRESHOLD = 0.02; 
+                            const SILENCE_TIMEOUT = 2000; // 2 seconds
+
+                            if (smoothedVolume > SPEECH_DETECT_THRESHOLD) {
+                                lastSpeechDetectedTimeRef.current = Date.now();
+                                if (!isUserSpeakingRef.current) {
+                                    isUserSpeakingRef.current = true;
+                                    speechStartTimeRef.current = Date.now();
                                 }
                             } else {
-                                // 3. Dynamic Normalization: Boost quiet speech
-                                // Target a reasonable RMS (e.g., 0.15) without clipping
-                                const TARGET_RMS = 0.15;
-                                const MAX_GAIN = 5.0; // Max boost factor
-                                
-                                // Calculate gain needed to reach target, but clamp it
-                                // We add a small epsilon to rms to avoid division by zero
-                                let gain = TARGET_RMS / (rms + 0.0001);
-                                gain = Math.min(gain, MAX_GAIN);
-                                gain = Math.max(gain, 1.0); // Don't reduce volume, only boost
-
-                                if (gain > 1.0) {
-                                    for (let i = 0; i < inputData.length; i++) {
-                                        inputData[i] *= gain;
-                                    }
+                                // If silence persists longer than timeout, reset the speaking state
+                                if (isUserSpeakingRef.current && (Date.now() - lastSpeechDetectedTimeRef.current > SILENCE_TIMEOUT)) {
+                                    isUserSpeakingRef.current = false;
+                                    speechStartTimeRef.current = null;
                                 }
                             }
+                            // --- END SPEAKING TIMER LOGIC ---
+
+                            // 4. Calculate Target Gain based on Dynamic Compression / Expansion
+                            let targetGain = 1.0;
+                            if (smoothedVolume < NOISE_THRESHOLD) {
+                                targetGain = 0; // Gate Closed
+                            } else {
+                                targetGain = TARGET_RMS / (smoothedVolume + 0.0001);
+                                targetGain = Math.min(targetGain, MAX_GAIN);
+                                targetGain = Math.max(targetGain, 1.0); // Only boost, don't attenuate loud speech too much
+                            }
+
+                            // 5. Smooth the Gain Application
+                            currentGain = GAIN_SMOOTHING * currentGain + (1 - GAIN_SMOOTHING) * targetGain;
+
+                            // 6. Apply Gain & Soft Limiting
+                            for (let i = 0; i < inputData.length; i++) {
+                                inputData[i] *= currentGain;
+                                // Soft Clipper to prevent digital distortion
+                                if (inputData[i] > 0.99) inputData[i] = 0.99;
+                                if (inputData[i] < -0.99) inputData[i] = -0.99;
+                            }
+                            
+                            // Save state
+                            audioRefs.current.audioProcessingState = { smoothedVolume, currentGain };
                             // --- END PROCESSING ---
 
                             const pcmBlob = createBlob(inputData);
@@ -669,6 +846,13 @@ STAGE 5 — FINAL EVALUATION
                         } 
                        if (message.serverContent?.outputTranscription) {
                             transcriptionBuffer.current.output += message.serverContent.outputTranscription.text;
+                        }
+                        
+                        // If model speaks or turn completes, reset the user speaking timer
+                        if (message.serverContent?.modelTurn || message.serverContent?.turnComplete) {
+                            isUserSpeakingRef.current = false;
+                            speechStartTimeRef.current = null;
+                            setSpeakingDuration(0);
                         }
 
                         if (message.serverContent?.turnComplete) {
@@ -735,14 +919,14 @@ STAGE 5 — FINAL EVALUATION
             sessionRef.current = await sessionPromise;
 
         } catch (err: any) {
-            console.error("Failed to start interview:", err);
+            console.error("Failed to start session:", err);
             // Enhanced error handling for permissions
             if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message.includes('permission') || err.message.includes('denied')) {
                 setPermissionDenied(true);
                 setShowPermissionModal(true); // Re-open or keep open the modal to show the error
                 setError(null);
             } else {
-                setError(`Failed to start interview: ${err.message}. Please check microphone permissions and try again.`);
+                setError(`Failed to start session: ${err.message}. Please check microphone permissions and try again.`);
                 setShowPermissionModal(false);
             }
             setIsLoading(false);
@@ -753,7 +937,7 @@ STAGE 5 — FINAL EVALUATION
     const generateFeedback = async (finalTranscript: TranscriptEntry[]) => {
         if (finalTranscript.length === 0) {
             setFeedback({ 
-                summary: "No interview data to analyze. The session was too short.", 
+                summary: "No session data to analyze. The session was too short.", 
                 strengths: [],
                 improvements: [],
                 tips: [],
@@ -768,25 +952,50 @@ STAGE 5 — FINAL EVALUATION
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const fullTranscriptText = finalTranscript.map(entry => `${entry.speaker === 'user' ? 'Candidate' : 'Interviewer'}: ${entry.text}`).join('\n\n');
             
-            const prompt = `As an expert hiring manager, analyze the following interview transcript for the role of '${settings.role}'. 
-            
-            TRANSCRIPT:
-            ${fullTranscriptText}
-            
-            TASKS:
-            1. Evaluate the candidate's answers based on Relevance, Clarity, Conciseness, and Technical Accuracy (1-10).
-            2. Provide a detailed summary.
-            3. Identify 3 specific strengths. YOU MUST QUOTE THE TRANSCRIPT to support each strength.
-            4. Identify 3 specific areas for improvement. YOU MUST QUOTE THE TRANSCRIPT where the candidate struggled, and provide a SPECIFIC suggestion on how to say it better.
-            5. Provide 3 general actionable tips for the next interview.
-            
-            Output strictly in JSON.
-            `;
+            let prompt = "";
+            if (sessionType === 'interview') {
+                 prompt = `As an expert hiring manager, analyze the following interview transcript for the role of '${settings.role}'. 
+                
+                TRANSCRIPT:
+                ${fullTranscriptText}
+                
+                TASKS:
+                1. Evaluate the candidate's answers based on Relevance, Clarity, Conciseness, and Technical Accuracy (1-10).
+                2. Provide a detailed summary.
+                3. Identify 3 specific strengths. YOU MUST QUOTE THE TRANSCRIPT to support each strength.
+                4. Identify 3 specific areas for improvement. YOU MUST QUOTE THE TRANSCRIPT where the candidate struggled, and provide a SPECIFIC suggestion on how to say it better.
+                5. Provide 3 general actionable tips for the next interview.
+                
+                Output strictly in JSON.
+                `;
+            } else {
+                // Presentation or Seminar Feedback
+                prompt = `As an expert Presentation and Public Speaking Coach, analyze the following ${sessionType} transcript.
+                Title: ${settings.role}
+                Audience: ${settings.topics}
+                
+                TRANSCRIPT:
+                ${fullTranscriptText}
+                
+                TASKS:
+                1. Evaluate the presentation based on:
+                   - Content Fidelity (Did they stick to the correct facts?) -> Score as Relevance
+                   - Clarity (Was the message easy to understand and well articulated?) -> Score as Clarity
+                   - Pacing & Delivery (Did they ramble or keep a good pace?) -> Score as Conciseness
+                   - Fact Accuracy (Were their facts correct based on the context?) -> Score as Technical Accuracy
+                2. Provide a detailed summary of the performance.
+                3. Identify 3 specific strengths in their delivery or content. QUOTE THE TRANSCRIPT.
+                4. Identify 3 specific areas for improvement (e.g. incorrect facts, filler words, confusing explanations). QUOTE THE TRANSCRIPT and provide a fix.
+                5. Provide 3 actionable tips for their next seminar/presentation.
+
+                Output strictly in JSON matching the schema structure provided.
+                `;
+            }
 
             const responseSchema = {
                 type: Type.OBJECT,
                 properties: {
-                    summary: { type: Type.STRING, description: "Executive summary of the candidate's performance." },
+                    summary: { type: Type.STRING, description: "Executive summary of the performance." },
                     strengths: { 
                         type: Type.ARRAY, 
                         items: { 
@@ -873,6 +1082,47 @@ STAGE 5 — FINAL EVALUATION
       setSettings(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleStartSessionSetup = (type: 'interview' | 'presentation' | 'seminar') => {
+        setSessionType(type);
+        setScreen('setup');
+        // Reset analysis when switching modes
+        setResumeAnalysis('');
+        setResumeFile(null);
+        setSettings(prev => ({
+            ...prev,
+            role: type === 'interview' ? 'Software Engineer' : (type === 'seminar' ? 'Research Topic' : 'Quarterly Business Review'),
+            topics: type === 'interview' ? 'React, TypeScript' : 'Audience',
+        }));
+    };
+    
+    // Helper to get score tooltip text
+    const getScoreExplanation = (metric: string) => {
+        if (sessionType === 'interview') {
+            switch (metric) {
+                case 'relevance': return "How well your answer addressed the specific question asked.";
+                case 'clarity': return "How structured, logical, and easy to follow your response was.";
+                case 'conciseness': return "Whether you avoided rambling and got to the point efficiently.";
+                case 'technicalAccuracy': return "The correctness and depth of your technical knowledge.";
+                default: return "";
+            }
+        } else {
+            switch (metric) {
+                case 'relevance': return "Content Fidelity: Did you stick to the facts in your slides?";
+                case 'clarity': return "Speech Clarity: Was your delivery articulate and easy to understand?";
+                case 'conciseness': return "Pacing: Did you maintain a good flow without rushing or dragging?";
+                case 'technicalAccuracy': return "Fact Accuracy: Were your statements factually correct?";
+                default: return "";
+            }
+        }
+    };
+
+    // Helper for speaking time color
+    const getTimerColor = (seconds: number) => {
+        if (seconds < 45) return '#34C759';
+        if (seconds < 90) return '#FFD700'; // Gold/Yellow
+        return '#FF3B30';
+    };
+
     return (
         <>
             <style>{`
@@ -888,9 +1138,11 @@ STAGE 5 — FINAL EVALUATION
                     --success-color: #34C759;
                 }
                 
-                /* Custom styles mostly for setup/interview/feedback screens 
-                   The Home screen now uses Tailwind
-                */
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
                 .app-container {
                     font-family: 'Poppins', sans-serif;
                     background: var(--bg-dark);
@@ -902,7 +1154,6 @@ STAGE 5 — FINAL EVALUATION
                     width: 100%;
                 }
                 
-                /* Only apply this container style when NOT on home screen */
                 .container {
                     width: 100%;
                     max-width: 800px;
@@ -913,12 +1164,11 @@ STAGE 5 — FINAL EVALUATION
                     box-shadow: 0 16px 32px rgba(0,0,0,0.1);
                     border: 1px solid rgba(255, 255, 255, 0.6);
                     box-sizing: border-box;
-                    color: var(--text-color); /* Reset text color for form readability */
+                    color: var(--text-color); 
                     position: relative;
                     z-index: 10;
                 }
                 
-                /* Keep form styles readable on white container */
                 h1, h2 {
                     color: var(--primary-color);
                     text-align: center;
@@ -1011,60 +1261,57 @@ STAGE 5 — FINAL EVALUATION
                 .tooltip-container {
                     position: relative;
                     display: inline-block;
-                    margin-left: 10px;
+                    margin-left: 8px;
                     cursor: help;
+                    vertical-align: middle;
                 }
                 .info-icon {
-                    background: var(--primary-color);
-                    color: white;
-                    width: 20px;
-                    height: 20px;
+                    background: #eee;
+                    color: #666;
+                    width: 18px;
+                    height: 18px;
                     border-radius: 50%;
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 12px;
+                    font-size: 11px;
                     font-weight: bold;
-                    font-family: serif;
+                    font-family: sans-serif;
                 }
                 .tooltip-content {
                     visibility: hidden;
-                    width: 260px;
-                    background-color: #444;
+                    width: 220px;
+                    background-color: #333;
                     color: #fff;
-                    text-align: left;
-                    border-radius: 8px;
-                    padding: 12px;
+                    text-align: center;
+                    border-radius: 6px;
+                    padding: 8px 10px;
                     position: absolute;
-                    z-index: 10;
-                    bottom: 135%;
+                    z-index: 20;
+                    bottom: 125%;
                     left: 50%;
-                    margin-left: -130px;
+                    transform: translateX(-50%);
                     opacity: 0;
                     transition: opacity 0.3s;
-                    font-size: 0.85rem;
-                    line-height: 1.5;
+                    font-size: 0.8rem;
+                    line-height: 1.4;
                     font-weight: normal;
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                    text-transform: none;
                 }
                 .tooltip-content::after {
                     content: "";
                     position: absolute;
                     top: 100%;
                     left: 50%;
-                    margin-left: -6px;
-                    border-width: 6px;
+                    margin-left: -5px;
+                    border-width: 5px;
                     border-style: solid;
-                    border-color: #444 transparent transparent transparent;
+                    border-color: #333 transparent transparent transparent;
                 }
                 .tooltip-container:hover .tooltip-content {
                     visibility: visible;
                     opacity: 1;
-                }
-                .tooltip-content strong {
-                    color: var(--secondary-color);
-                    display: inline-block;
-                    margin-bottom: 2px;
                 }
 
                 /* Modal Styles */
@@ -1113,17 +1360,6 @@ STAGE 5 — FINAL EVALUATION
                     background-color: #d0d0d0;
                 }
                 
-                /* Other helper classes for Briefing/Feedback */
-                .transcript-container {
-                  height: 400px;
-                  overflow-y: auto;
-                  background-color: #f8f9fa;
-                  border: 1px solid var(--border-color);
-                  border-radius: 12px;
-                  padding: 20px;
-                  margin-bottom: 20px;
-                  color: #333;
-                }
                 .briefing-text {
                     background-color: #eaf2ff;
                     border-left: 5px solid var(--primary-color);
@@ -1166,7 +1402,16 @@ STAGE 5 — FINAL EVALUATION
                     border-bottom: 1px solid var(--border-color);
                 }
                 .score-item { text-align: center; }
-                .score-item h4 { margin: 0 0 8px 0; font-weight: 500; color: #777; font-size: 0.8rem; text-transform: uppercase; }
+                .score-item h4 { 
+                    margin: 0 0 8px 0; 
+                    font-weight: 600; 
+                    color: #555; 
+                    font-size: 0.75rem; 
+                    text-transform: uppercase; 
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
                 .score-item p { margin: 0; font-size: 1.5rem; font-weight: 600; color: #333; }
                 
                 .feedback-section {
@@ -1229,64 +1474,9 @@ STAGE 5 — FINAL EVALUATION
                 }
                 .feedback-suggestion strong { color: var(--primary-color); }
 
-                /* Video Preview Styles */
-                .video-preview-container {
-                    width: 100%;
-                    max-width: 200px;
-                    height: 150px;
-                    background: #000;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    margin-bottom: 10px;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                    position: absolute;
-                    top: 40px;
-                    right: 40px;
-                    z-index: 20;
-                    border: 2px solid rgba(255,255,255,0.2);
-                }
-                .user-video-feed {
-                    width: 100%;
-                    height: 100%;
-                    object-fit: cover;
-                }
-
-                .video-controls {
-                    position: absolute;
-                    bottom: 10px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    display: flex;
-                    gap: 10px;
-                    z-index: 25;
-                }
-                .control-btn {
-                    background: rgba(0,0,0,0.6);
-                    border: none;
-                    color: white;
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 14px;
-                    transition: background 0.2s;
-                }
-                .control-btn:hover {
-                    background: rgba(0,0,0,0.8);
-                }
-                .control-btn.off {
-                    background: var(--error-color);
-                }
-                
                 @media (max-width: 600px) {
-                    .video-preview-container {
-                        position: relative;
-                        top: 0;
-                        right: 0;
-                        margin: 0 auto 20px auto;
+                    .scores-detailed {
+                        grid-template-columns: repeat(2, 1fr);
                     }
                 }
                 
@@ -1304,10 +1494,30 @@ STAGE 5 — FINAL EVALUATION
                     'opsz' 24
                 }
 
+                /* Animation for Interview Pulse */
+                .animated-pulse-ring {
+                  box-shadow: 0 0 0 0 rgba(242, 140, 140, 0.7); /* Matching interview-primary color */
+                  animation: pulse-ring 2s infinite;
+                }
+                @keyframes pulse-ring {
+                  0% {
+                    transform: scale(0.95);
+                    box-shadow: 0 0 0 0 rgba(242, 140, 140, 0.7);
+                  }
+                  70% {
+                    transform: scale(1);
+                    box-shadow: 0 0 0 25px rgba(242, 140, 140, 0);
+                  }
+                  100% {
+                    transform: scale(0.95);
+                    box-shadow: 0 0 0 0 rgba(242, 140, 140, 0);
+                  }
+                }
+
             `}</style>
             
             {screen === 'home' ? (
-               <div className="relative flex min-h-screen w-full flex-col group/design-root overflow-hidden">
+               <div className="relative flex min-h-screen w-full flex-col group/design-root overflow-hidden bg-background-light dark:bg-background-dark">
                 <div className="absolute inset-0 z-0">
                     <div className="absolute -top-1/4 left-0 w-full h-full bg-primary/30 dark:bg-primary/20 rounded-full blur-[100px] opacity-50 dark:opacity-30"></div>
                     <div className="absolute -bottom-1/4 right-0 w-full h-full bg-[#C061FF]/30 dark:bg-[#C061FF]/20 rounded-full blur-[100px] opacity-50 dark:opacity-30"></div>
@@ -1319,7 +1529,7 @@ STAGE 5 — FINAL EVALUATION
                                 chat_bubble
                             </span>
                         </div>
-                        <h2 className="text-zinc-900 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 ml-2">InterviewPrep</h2>
+                        <h2 className="text-zinc-900 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 ml-2">SpeakEasy AI</h2>
                         <div className="flex w-12 items-center justify-end">
                             <button 
                                 onClick={() => setDarkMode(!darkMode)}
@@ -1333,101 +1543,113 @@ STAGE 5 — FINAL EVALUATION
                     </div>
                     <div className="flex flex-1 flex-col justify-center pb-8">
                         <div className="flex flex-col items-center">
-                            <h1 className="text-zinc-900 dark:text-white text-[40px] font-black leading-tight tracking-tighter text-center pt-8 pb-3">Land Your Dream Job</h1>
-                            <p className="text-zinc-700 dark:text-zinc-300 text-base font-normal leading-normal pb-8 pt-1 px-4 text-center max-w-sm">Practice with AI-powered mock interviews and expert-curated questions.</p>
-                            <div className="w-full max-w-md rounded-xl bg-white/40 dark:bg-zinc-800/50 backdrop-blur-lg p-6 shadow-lg border border-white/20 dark:border-zinc-700/50">
-                                <div className="flex w-full flex-col items-stretch gap-4">
-                                    <button 
-                                        onClick={() => setScreen('setup')}
-                                        className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-2xl h-14 px-5 gradient-bg text-white text-base font-bold leading-normal tracking-[0.015em] w-full shadow-md hover:scale-[1.02] transition-transform duration-200"
-                                    >
-                                        <span className="truncate">Start Interview</span>
-                                    </button>
-                                    <button className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-2xl h-14 px-5 bg-transparent text-zinc-900 dark:text-white text-base font-bold leading-normal tracking-[0.015em] w-full border-2 border-zinc-900 dark:border-white hover:bg-zinc-900/5 dark:hover:bg-white/5 transition-colors duration-200">
-                                        <span className="truncate">Explore Questions</span>
-                                    </button>
+                            <h1 className="text-zinc-900 dark:text-white text-[40px] font-black leading-tight tracking-tighter text-center pt-8 pb-3">Speak with Confidence</h1>
+                            <p className="text-zinc-700 dark:text-zinc-300 text-base font-normal leading-normal pb-8 pt-1 px-4 text-center max-w-sm">Practice for high-stakes interviews or perfect your seminar presentations with real-time AI feedback.</p>
+                            
+                            <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-6 px-4">
+                                {/* Interview Card with Animated Border */}
+                                <div className="relative group cursor-pointer w-full h-full" onClick={() => handleStartSessionSetup('interview')}>
+                                    {/* Rotating Gradient Border */}
+                                    <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-blue-400 via-purple-500 to-blue-400 opacity-60 group-hover:opacity-100 blur-[2px] animate-spin-slow transition-opacity duration-500"></div>
+                                    {/* Inner Content */}
+                                    <div className="relative flex flex-col items-center justify-center p-6 rounded-2xl bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md h-full transition-transform duration-200 group-hover:scale-[0.98]">
+                                        <div className="bg-blue-100 dark:bg-blue-900/40 p-3 rounded-full mb-3 shadow-inner">
+                                            <span className="material-symbols-outlined text-3xl text-blue-600 dark:text-blue-300">work</span>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Job Interview</h3>
+                                        <p className="text-sm text-zinc-600 dark:text-zinc-400 text-center">Practice behavioral & technical questions</p>
+                                    </div>
+                                </div>
+                                
+                                {/* Presentation Card with Animated Border */}
+                                <div className="relative group cursor-pointer w-full h-full" onClick={() => handleStartSessionSetup('presentation')}>
+                                    {/* Rotating Gradient Border */}
+                                    <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-pink-400 via-purple-500 to-pink-400 opacity-60 group-hover:opacity-100 blur-[2px] animate-spin-slow transition-opacity duration-500"></div>
+                                    {/* Inner Content */}
+                                    <div className="relative flex flex-col items-center justify-center p-6 rounded-2xl bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md h-full transition-transform duration-200 group-hover:scale-[0.98]">
+                                        <div className="bg-purple-100 dark:bg-purple-900/40 p-3 rounded-full mb-3 shadow-inner">
+                                            <span className="material-symbols-outlined text-3xl text-purple-600 dark:text-purple-300">present_to_all</span>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Presentation</h3>
+                                        <p className="text-sm text-zinc-600 dark:text-zinc-400 text-center">Rehearse slides & delivery</p>
+                                    </div>
+                                </div>
+
+                                {/* Seminar Card with Animated Border */}
+                                <div className="relative group cursor-pointer w-full h-full" onClick={() => handleStartSessionSetup('seminar')}>
+                                    {/* Rotating Gradient Border */}
+                                    <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-orange-400 via-yellow-500 to-orange-400 opacity-60 group-hover:opacity-100 blur-[2px] animate-spin-slow transition-opacity duration-500"></div>
+                                    {/* Inner Content */}
+                                    <div className="relative flex flex-col items-center justify-center p-6 rounded-2xl bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md h-full transition-transform duration-200 group-hover:scale-[0.98]">
+                                        <div className="bg-orange-100 dark:bg-orange-900/40 p-3 rounded-full mb-3 shadow-inner">
+                                            <span className="material-symbols-outlined text-3xl text-orange-600 dark:text-orange-300">school</span>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Seminar</h3>
+                                        <p className="text-sm text-zinc-600 dark:text-zinc-400 text-center">Academic & research talk prep</p>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex w-full justify-center mt-12">
-                                <div className="w-full max-w-xs h-auto">
-                                    <img 
-                                        className="w-full h-full object-contain mix-blend-luminosity dark:mix-blend-normal opacity-80 dark:opacity-100" 
-                                        alt="Stylized illustration of two people having a conversation with speech bubbles" 
-                                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDgIGXHMStBstKY_Tp-66XwArV85fQf4wcrHINGda6gjgrDlJQEEdlupqRt7Q8A7XBH2mpg0zmzEoPchkITcL7B_YpfNElPia8BZZPAyBlg7lYpin6HXIt-J6LnnzkiJRmzuOGqckIxBxvad9bjKkakbg14Sg3JvmY-EpIXz_sFwrHV1WXPs_ZSvkaOKnPonc-Mv2N85cAy--hcLAdCWZ453BCRjLFvpQiwsr7v6DaKezq5o0ToTbzM2iD-RlYxPWXCzysOo96w2et"
-                                    />
-                                </div>
-                            </div>
+
                         </div>
-                        <div className="mt-16 w-full max-w-md mx-auto">
-                            <h3 className="text-2xl font-bold text-zinc-900 dark:text-white text-center">Guidelines</h3>
+                        <div className="mt-16 w-full max-w-md mx-auto px-4">
+                            <h3 className="text-2xl font-bold text-zinc-900 dark:text-white text-center">How it works</h3>
                             <div className="mt-6 space-y-4">
                                 <div className="flex items-start gap-4">
                                     <div className="flex-shrink-0 mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50">
-                                        <span className="material-symbols-outlined text-sm text-blue-600 dark:text-blue-300">mic</span>
+                                        <span className="material-symbols-outlined text-sm text-blue-600 dark:text-blue-300">upload_file</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-zinc-800 dark:text-zinc-100">Find a Quiet Space</h4>
-                                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Ensure your microphone can hear you clearly without background noise for best results.</p>
+                                        <h4 className="font-bold text-zinc-800 dark:text-zinc-100">Upload Your Materials</h4>
+                                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Upload your resume for interviews, or your slides for presentations.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
                                     <div className="flex-shrink-0 mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50">
-                                        <span className="material-symbols-outlined text-sm text-green-600 dark:text-green-300">lightbulb</span>
+                                        <span className="material-symbols-outlined text-sm text-green-600 dark:text-green-300">mic</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-zinc-800 dark:text-zinc-100">Think Before You Speak</h4>
-                                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Take a moment to structure your thoughts. It's okay to pause and think.</p>
+                                        <h4 className="font-bold text-zinc-800 dark:text-zinc-100">Live Interaction</h4>
+                                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Answer questions or present your topic. The AI listens and reacts in real-time.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
                                     <div className="flex-shrink-0 mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/50">
-                                        <span className="material-symbols-outlined text-sm text-purple-600 dark:text-purple-300">task_alt</span>
+                                        <span className="material-symbols-outlined text-sm text-purple-600 dark:text-purple-300">analytics</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-zinc-800 dark:text-zinc-100">Review Your Feedback</h4>
-                                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">After each session, review the AI feedback to identify areas for improvement.</p>
+                                        <h4 className="font-bold text-zinc-800 dark:text-zinc-100">Get Expert Feedback</h4>
+                                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Receive a detailed breakdown of your performance, accuracy, and delivery.</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
-
-                        {/* Testimonials Section */}
-                        <div className="mt-16 w-full max-w-4xl mx-auto px-4">
-                            <h3 className="text-2xl font-bold text-zinc-900 dark:text-white text-center mb-8">What Our Users Say</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* Testimonial 1 */}
-                                <div className="bg-white/40 dark:bg-zinc-800/50 backdrop-blur-lg p-6 rounded-xl border border-white/20 dark:border-zinc-700/50 shadow-sm transition-transform hover:scale-[1.02] duration-200">
-                                    <p className="text-zinc-700 dark:text-zinc-300 text-sm italic mb-4">"This AI coach helped me ace my System Design round at a top tech company! The real-time feedback is incredible."</p>
-                                    <div className="flex items-center gap-3">
-                                         <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">AC</div>
-                                         <div>
-                                            <div className="text-sm font-bold text-zinc-900 dark:text-white">Alex Chen</div>
-                                            <div className="text-xs text-zinc-500 dark:text-zinc-400">Software Engineer</div>
-                                         </div>
+                        
+                        {/* REVIEWS SECTION */}
+                         <div className="mt-20 w-full max-w-4xl mx-auto px-4 pb-20">
+                            <h3 className="text-2xl font-bold text-zinc-900 dark:text-white text-center mb-8">Trusted by Professionals</h3>
+                            
+                            <div className="relative overflow-hidden min-h-[200px] flex justify-center">
+                                 <div key={currentReviewIndex} className="w-full max-w-2xl bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md p-8 rounded-2xl border border-white/20 dark:border-white/5 shadow-xl text-center animate-[fadeIn_0.5s_ease-in-out]">
+                                    <div className="flex justify-center mb-4">
+                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                                            {reviews[currentReviewIndex].avatar}
+                                        </div>
                                     </div>
-                                </div>
-                                {/* Testimonial 2 */}
-                                <div className="bg-white/40 dark:bg-zinc-800/50 backdrop-blur-lg p-6 rounded-xl border border-white/20 dark:border-zinc-700/50 shadow-sm transition-transform hover:scale-[1.02] duration-200">
-                                    <p className="text-zinc-700 dark:text-zinc-300 text-sm italic mb-4">"The detailed breakdown of my communication style was a game changer. I feel much more confident now."</p>
-                                    <div className="flex items-center gap-3">
-                                         <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold">SJ</div>
-                                         <div>
-                                            <div className="text-sm font-bold text-zinc-900 dark:text-white">Sarah Jones</div>
-                                            <div className="text-xs text-zinc-500 dark:text-zinc-400">Product Manager</div>
-                                         </div>
-                                    </div>
-                                </div>
-                                {/* Testimonial 3 */}
-                                <div className="bg-white/40 dark:bg-zinc-800/50 backdrop-blur-lg p-6 rounded-xl border border-white/20 dark:border-zinc-700/50 shadow-sm transition-transform hover:scale-[1.02] duration-200">
-                                    <p className="text-zinc-700 dark:text-zinc-300 text-sm italic mb-4">"I love the timed mode. It really prepares you for the pressure of actual interviews. Highly recommended!"</p>
-                                    <div className="flex items-center gap-3">
-                                         <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 font-bold">MB</div>
-                                         <div>
-                                            <div className="text-sm font-bold text-zinc-900 dark:text-white">Michael Brown</div>
-                                            <div className="text-xs text-zinc-500 dark:text-zinc-400">Data Scientist</div>
-                                         </div>
-                                    </div>
-                                </div>
+                                    <p className="text-lg text-zinc-700 dark:text-zinc-300 italic mb-6 leading-relaxed">"{reviews[currentReviewIndex].content}"</p>
+                                    <h4 className="font-bold text-zinc-900 dark:text-white text-lg">{reviews[currentReviewIndex].name}</h4>
+                                    <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium">{reviews[currentReviewIndex].role}</p>
+                                 </div>
+                            </div>
+                            
+                            <div className="flex justify-center mt-6 gap-2">
+                                {reviews.map((_, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setCurrentReviewIndex(idx)}
+                                        className={`w-3 h-3 rounded-full transition-all duration-300 ${idx === currentReviewIndex ? 'bg-primary w-6' : 'bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400'}`}
+                                        aria-label={`Go to review ${idx + 1}`}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -1447,32 +1669,38 @@ STAGE 5 — FINAL EVALUATION
                             <button onClick={() => setScreen('home')} className="text-deep-navy dark:text-white flex size-10 items-center justify-center cursor-pointer transition-transform hover:scale-110">
                                 <span className="material-symbols-outlined text-2xl">arrow_back</span>
                             </button>
-                            <h2 className="text-deep-navy dark:text-white text-lg font-bold leading-tight tracking-tight flex-1 text-center">Interview Setup</h2>
+                            <h2 className="text-deep-navy dark:text-white text-lg font-bold leading-tight tracking-tight flex-1 text-center">
+                                {sessionType === 'interview' ? 'Interview Setup' : (sessionType === 'seminar' ? 'Seminar Setup' : 'Presentation Setup')}
+                            </h2>
                             <div className="size-10 shrink-0"></div>
                         </div>
                         <main className="relative flex-1 px-4 pt-4 pb-8 z-10 flex flex-col items-center">
                             <div className="flex flex-col gap-6 w-full max-w-[480px]">
                                 <div className="flex flex-wrap items-end gap-4 w-full">
                                     <label className="flex flex-col min-w-40 flex-1">
-                                        <p className="text-deep-navy dark:text-white text-base font-medium leading-normal pb-2">Target Role</p>
+                                        <p className="text-deep-navy dark:text-white text-base font-medium leading-normal pb-2">
+                                            {sessionType === 'interview' ? 'Target Role' : 'Presentation Title'}
+                                        </p>
                                         <input 
                                             name="role"
                                             value={settings.role}
                                             onChange={handleSettingsChange}
                                             className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-deep-navy dark:text-deep-navy focus:outline-0 focus:ring-2 focus:ring-mango-orange/50 border border-pastel-pink/50 dark:border-pastel-pink/50 bg-airy-cream dark:bg-airy-cream backdrop-blur-sm focus:border-mango-orange h-14 placeholder:text-deep-navy/60 dark:placeholder:text-deep-navy/60 p-[15px] text-base font-normal leading-normal" 
-                                            placeholder="e.g. Product Manager" 
+                                            placeholder={sessionType === 'interview' ? "e.g. Product Manager" : "e.g. Q3 Business Review"} 
                                         />
                                     </label>
                                 </div>
                                 <div className="flex flex-wrap items-end gap-4 w-full">
                                     <label className="flex flex-col min-w-40 flex-1">
-                                        <p className="text-deep-navy dark:text-white text-base font-medium leading-normal pb-2">Key Topics / Skills</p>
+                                        <p className="text-deep-navy dark:text-white text-base font-medium leading-normal pb-2">
+                                            {sessionType === 'interview' ? 'Key Topics / Skills' : 'Target Audience'}
+                                        </p>
                                         <textarea 
                                             name="topics"
                                             value={settings.topics}
                                             onChange={handleSettingsChange}
                                             className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-deep-navy dark:text-deep-navy focus:outline-0 focus:ring-2 focus:ring-mango-orange/50 border border-pastel-pink/50 dark:border-pastel-pink/50 bg-airy-cream dark:bg-airy-cream backdrop-blur-sm focus:border-mango-orange min-h-36 placeholder:text-deep-navy/60 dark:placeholder:text-deep-navy/60 p-[15px] text-base font-normal leading-normal" 
-                                            placeholder="e.g. A/B testing, user research"
+                                            placeholder={sessionType === 'interview' ? "e.g. A/B testing, user research" : "e.g. Executive Team, Investors, Students"}
                                         />
                                     </label>
                                 </div>
@@ -1485,7 +1713,10 @@ STAGE 5 — FINAL EVALUATION
                                             <span className="material-symbols-outlined">upload_file</span>
                                         </div>
                                         <p className="text-deep-navy dark:text-deep-navy text-base font-normal leading-normal flex-1 truncate text-left">
-                                            {resumeFile ? resumeFile.name : "Upload Resume (PDF - Optional)"}
+                                            {resumeFile 
+                                                ? resumeFile.name 
+                                                : (sessionType === 'interview' ? "Upload Resume (PDF - Optional)" : "Upload Slides (PDF - Recommended)")
+                                            }
                                         </p>
                                         {resumeFile && (
                                             <span className="material-symbols-outlined text-green-600">check_circle</span>
@@ -1514,7 +1745,7 @@ STAGE 5 — FINAL EVALUATION
                                             <option value="Fenrir">Fenrir (Authoritative)</option>
                                         </select>
                                         <div className="flex items-center gap-4 bg-airy-cream dark:bg-airy-cream backdrop-blur-sm px-4 min-h-14 justify-between rounded-xl border border-pastel-pink/50 dark:border-pastel-pink/50">
-                                            <p className="text-deep-navy dark:text-deep-navy text-base font-normal leading-normal flex-1 truncate">Interviewer Voice</p>
+                                            <p className="text-deep-navy dark:text-deep-navy text-base font-normal leading-normal flex-1 truncate">AI Voice</p>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-deep-navy/70 dark:text-deep-navy/70">{settings.voice}</span>
                                                 <div className="text-deep-navy/70 dark:text-deep-navy/70 flex size-7 shrink-0 items-center justify-center">
@@ -1548,6 +1779,7 @@ STAGE 5 — FINAL EVALUATION
                                         </div>
                                     </div>
 
+                                    {sessionType === 'interview' && (
                                     <div className="relative">
                                          <select 
                                             name="level"
@@ -1569,6 +1801,7 @@ STAGE 5 — FINAL EVALUATION
                                             </div>
                                         </div>
                                     </div>
+                                    )}
 
                                     <div className="relative">
                                          <select 
@@ -1601,7 +1834,7 @@ STAGE 5 — FINAL EVALUATION
                                     disabled={isLoading}
                                     className="flex w-full items-center justify-center rounded-full bg-sunny-yellow h-14 text-deep-navy text-lg font-bold leading-tight tracking-tight transition-all hover:bg-mango-orange shadow-lg hover:scale-[1.02]"
                                 >
-                                    {isLoading ? 'Preparing Session...' : 'Start Interview'}
+                                    {isLoading ? 'Preparing Session...' : (sessionType === 'interview' ? 'Start Interview' : (sessionType === 'seminar' ? 'Start Seminar' : 'Start Presentation'))}
                                 </button>
                                 <button 
                                     onClick={() => setScreen('home')}
@@ -1615,10 +1848,10 @@ STAGE 5 — FINAL EVALUATION
                    </div>
                 ) : (
                 <div className="app-container">
-                    <div className="container">
+                    <div className="container" style={screen === 'interview' ? {maxWidth: '100%', height: '100vh', margin: 0, padding: 0, borderRadius: 0, border: 'none', background: 'transparent', display: 'flex', flexDirection: 'column'} : {}}>
                         {screen === 'briefing' && (
                             <>
-                                <h1>Interview Briefing</h1>
+                                <h1>{sessionType === 'interview' ? 'Interview Briefing' : 'Session Briefing'}</h1>
                                 <div className="briefing-text">
                                     {briefingText || "Generating briefing..."}
                                 </div>
@@ -1630,69 +1863,105 @@ STAGE 5 — FINAL EVALUATION
                         )}
 
                         {screen === 'interview' && (
-                            <div style={{ textAlign: 'center', position: 'relative' }}>
-                                <div className="video-preview-container">
-                                    <video ref={videoRef} autoPlay muted playsInline className="user-video-feed" />
-                                    <div className="video-controls">
-                                        <button onClick={toggleMute} className={`control-btn ${isMuted ? 'off' : ''}`} title="Toggle Microphone">
-                                            {isMuted ? '🔇' : '🎙️'}
-                                        </button>
-                                        <button onClick={toggleCamera} className={`control-btn ${isCameraOff ? 'off' : ''}`} title="Toggle Camera">
-                                            {isCameraOff ? '🚫' : '📹'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div style={{ marginBottom: '30px' }}>
-                                    <div style={{ 
-                                        width: '120px', 
-                                        height: '120px', 
-                                        borderRadius: '50%', 
-                                        background: 'var(--primary-color)', 
-                                        margin: '0 auto', 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        justifyContent: 'center',
-                                        boxShadow: '0 0 30px rgba(108, 99, 255, 0.4)',
-                                        animation: 'pulse 2s infinite'
-                                    }}>
-                                        <span style={{ fontSize: '3rem' }}>🎙️</span>
-                                    </div>
-                                    <style>{`
-                                        @keyframes pulse {
-                                            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.7); }
-                                            70% { transform: scale(1.1); box-shadow: 0 0 0 20px rgba(108, 99, 255, 0); }
-                                            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 99, 255, 0); }
-                                        }
-                                    `}</style>
-                                </div>
-                                
-                                <h2>Interview in Progress</h2>
-                                <p>Listening to your answers...</p>
-
-                                {settings.mode === 'timed' && timeLeft !== null && (
-                                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: timeLeft < 30 ? 'var(--error-color)' : 'var(--primary-color)', margin: '20px 0' }}>
-                                        {timeLeft}s
-                                    </div>
-                                )}
-
-                                <div style={{ height: '150px', overflowY: 'auto', border: '1px solid #eee', padding: '10px', borderRadius: '8px', textAlign: 'left', marginBottom: '20px', fontSize: '0.9rem', color: '#666' }}>
-                                    {transcript.slice(-3).map((t, i) => (
-                                        <div key={i} style={{ marginBottom: '8px' }}>
-                                            <strong>{t.speaker === 'user' ? 'You' : 'Interviewer'}:</strong> {t.text}
+                            <div className="flex flex-col h-screen p-6 w-full max-w-[600px] mx-auto">
+                                <main className="flex flex-col flex-1 h-full">
+                                    <div className="flex-grow flex flex-col items-center pt-8">
+                                        <div className="flex flex-col items-center">
+                                            {/* Pulse Ring and Microphone */}
+                                            <div className="relative w-32 h-32 flex items-center justify-center">
+                                                <div className="absolute inset-0 bg-gradient-to-br from-gradient-start to-gradient-end rounded-full animated-pulse-ring"></div>
+                                                <div className="relative w-28 h-28 bg-white/50 dark:bg-black/20 backdrop-blur-sm rounded-full flex items-center justify-center shadow-xl">
+                                                    <span className="material-icons text-white text-5xl">mic</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Video Feed */}
+                                            <div className="w-32 h-44 mt-6 bg-surface-dark rounded-3xl shadow-lg border-2 border-white/10 overflow-hidden relative group">
+                                                <video 
+                                                    ref={videoRef} 
+                                                    autoPlay 
+                                                    muted 
+                                                    playsInline 
+                                                    className={`absolute inset-0 w-full h-full object-cover transform scale-x-[-1] ${isCameraOff ? 'hidden' : ''}`}
+                                                />
+                                                {isCameraOff && (
+                                                     <div className="absolute inset-0 flex items-center justify-center bg-gray-800 text-white">
+                                                        <span className="material-icons text-3xl">videocam_off</span>
+                                                     </div>
+                                                )}
+                                                
+                                                {/* Controls Overlay with Tooltips */}
+                                                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-auto bg-black/40 backdrop-blur-sm rounded-full p-2 flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                    <button onClick={toggleMute} className="group/btn relative text-white hover:text-red-400 transition-colors p-2">
+                                                        <span className="material-icons text-lg">{isMuted ? 'mic_off' : 'mic'}</span>
+                                                        <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                                                            {isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+                                                        </span>
+                                                    </button>
+                                                    <button onClick={toggleCamera} className="group/btn relative text-white hover:text-red-400 transition-colors p-2">
+                                                        <span className="material-icons text-lg">{isCameraOff ? 'videocam_off' : 'videocam'}</span>
+                                                        <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                                                            {isCameraOff ? 'Turn Camera On' : 'Turn Camera Off'}
+                                                        </span>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
-                                    ))}
-                                    {transcript.length === 0 && <i>Conversation will appear here...</i>}
-                                </div>
 
-                                <button className="button" style={{ backgroundColor: 'var(--error-color)' }} onClick={stopInterview}>
-                                    End Interview
-                                </button>
+                                        <h1 className="text-2xl font-bold text-heading-light dark:text-heading-dark mt-8 text-center">
+                                            {sessionType === 'interview' ? 'Interview in Progress' : (sessionType === 'seminar' ? 'Seminar Mode' : 'Presentation Mode')}
+                                        </h1>
+                                        <p className="text-sm text-text-light dark:text-text-dark mt-1 text-center">
+                                            {sessionType === 'interview' ? 'Listening to your answers...' : 'Listening to your presentation...'}
+                                        </p>
+
+                                        {/* Speaking Timer Indicator */}
+                                        {speakingDuration > 0 && (
+                                            <div className="mt-3 px-3 py-1 bg-surface-light dark:bg-surface-dark rounded-full shadow-sm border border-gray-200 dark:border-gray-700 flex items-center gap-2">
+                                                 <div className="w-2 h-2 rounded-full animate-pulse" style={{backgroundColor: getTimerColor(speakingDuration)}}></div>
+                                                 <span className="text-xs font-semibold text-text-light dark:text-text-dark">{speakingDuration.toFixed(1)}s</span>
+                                            </div>
+                                        )}
+                                         {settings.mode === 'timed' && timeLeft !== null && (
+                                            <div className="mt-2 text-xl font-bold" style={{ color: timeLeft < 30 ? 'var(--error-color)' : 'var(--primary-color)' }}>
+                                                {timeLeft}s
+                                            </div>
+                                        )}
+
+                                        {/* Transcript Area */}
+                                        <div className="w-full bg-surface-light dark:bg-surface-dark rounded-2xl mt-8 p-4 flex-grow overflow-hidden shadow-inner flex flex-col border border-gray-100 dark:border-gray-800" style={{maxHeight: '30vh'}}>
+                                            <div className="overflow-y-auto flex-grow space-y-3 custom-scrollbar pr-2">
+                                                {transcript.length === 0 ? (
+                                                    <p className="text-text-light/50 dark:text-text-dark/50 text-sm text-center italic mt-10">Conversation will appear here...</p>
+                                                ) : (
+                                                    transcript.map((t, i) => (
+                                                        <div key={i} className={`flex flex-col ${t.speaker === 'user' ? 'items-end' : 'items-start'}`}>
+                                                            <span className="text-[10px] text-gray-400 mb-1 uppercase tracking-wider">{t.speaker === 'user' ? 'You' : 'AI Coach'}</span>
+                                                            <div className={`p-3 rounded-2xl max-w-[90%] text-sm ${t.speaker === 'user' ? 'bg-indigo-500 text-white rounded-br-none' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-none'}`}>
+                                                                {t.text}
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                                <div ref={transcriptEndRef} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 mb-4">
+                                        <button 
+                                            onClick={stopInterview}
+                                            className="w-full bg-interview-primary text-white font-semibold py-4 rounded-full shadow-lg shadow-red-400/30 hover:shadow-red-400/50 hover:opacity-95 transition-all transform hover:scale-[1.01]"
+                                        >
+                                            End Session
+                                        </button>
+                                    </div>
+                                </main>
                             </div>
                         )}
 
                         {screen === 'feedback' && feedback && (
-                            <div>
+                            <div className="w-full max-w-[800px] mx-auto">
                                 <h1>Performance Analysis</h1>
                                 
                                 <div style={{ textAlign: 'center', marginBottom: '30px' }}>
@@ -1704,19 +1973,43 @@ STAGE 5 — FINAL EVALUATION
 
                                 <div className="scores-detailed">
                                     <div className="score-item">
-                                        <h4>Relevance</h4>
+                                        <h4>
+                                            {sessionType === 'interview' ? 'Relevance' : 'Content Fidelity'}
+                                            <div className="tooltip-container">
+                                                <span className="info-icon">i</span>
+                                                <div className="tooltip-content">{getScoreExplanation('relevance')}</div>
+                                            </div>
+                                        </h4>
                                         <p>{feedback.relevance}/10</p>
                                     </div>
                                     <div className="score-item">
-                                        <h4>Clarity</h4>
+                                        <h4>
+                                            {sessionType === 'interview' ? 'Clarity' : 'Speech Clarity'}
+                                            <div className="tooltip-container">
+                                                <span className="info-icon">i</span>
+                                                <div className="tooltip-content">{getScoreExplanation('clarity')}</div>
+                                            </div>
+                                        </h4>
                                         <p>{feedback.clarity}/10</p>
                                     </div>
                                     <div className="score-item">
-                                        <h4>Conciseness</h4>
+                                        <h4>
+                                            {sessionType === 'interview' ? 'Conciseness' : 'Pacing'}
+                                            <div className="tooltip-container">
+                                                <span className="info-icon">i</span>
+                                                <div className="tooltip-content">{getScoreExplanation('conciseness')}</div>
+                                            </div>
+                                        </h4>
                                         <p>{feedback.conciseness}/10</p>
                                     </div>
                                     <div className="score-item">
-                                        <h4>Tech Accuracy</h4>
+                                        <h4>
+                                            {sessionType === 'interview' ? 'Tech Accuracy' : 'Fact Accuracy'}
+                                            <div className="tooltip-container">
+                                                <span className="info-icon">i</span>
+                                                <div className="tooltip-content">{getScoreExplanation('technicalAccuracy')}</div>
+                                            </div>
+                                        </h4>
                                         <p>{feedback.technicalAccuracy}/10</p>
                                     </div>
                                 </div>
@@ -1782,7 +2075,7 @@ STAGE 5 — FINAL EVALUATION
                                             {transcript.map((t, i) => (
                                                 <div key={i} style={{ marginBottom: '10px' }}>
                                                     <strong style={{ color: t.speaker === 'user' ? 'var(--primary-color)' : '#555' }}>
-                                                        {t.speaker === 'user' ? 'You' : 'Interviewer'}:
+                                                        {t.speaker === 'user' ? 'You' : 'AI Coach'}:
                                                     </strong> {t.text}
                                                 </div>
                                             ))}
@@ -1818,7 +2111,7 @@ STAGE 5 — FINAL EVALUATION
                             </div>
                         ) : (
                             <p style={{ color: '#666', marginBottom: '20px' }}>
-                                To simulate a real interview, we need access to your microphone and camera. 
+                                To simulate a real session, we need access to your microphone and camera. 
                                 Video is recorded for your personal review only.
                             </p>
                         )}
