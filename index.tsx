@@ -1,4 +1,4 @@
-import { GoogleGenAI, LiveServerMessage, Modality, Type } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage, Modality, Type, Chat, GenerateContentResponse } from "@google/genai";
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { getAnalytics } from "firebase/analytics";
@@ -220,6 +220,198 @@ const TourGuide = ({ steps, isOpen, onClose, stepIndex, onNext }: { steps: TourS
         </div>
     );
 };
+
+// --- CHATBOT COMPONENT ---
+const ChatWidget = () => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([
+        { role: 'model', text: 'Hi! I can help you understand SpeakEasy AI features. What would you like to know?' }
+    ]);
+    const [inputValue, setInputValue] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [chatSession, setChatSession] = useState<Chat | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const initChat = async () => {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const chat = ai.chats.create({
+                model: 'gemini-3-flash-preview',
+                config: {
+                    systemInstruction: `You are the friendly and helpful AI Support Assistant for 'SpeakEasy AI'.
+                    Your goal is to help users understand, navigate, and use the application effectively.
+                    
+                    APP FEATURES TO EXPLAIN:
+                    1. **Interview Practice:** Users simulate real-time job interviews. They can upload a PDF resume. The AI acts as an interviewer (Recruiter or Technical) based on the "Target Role" and "Topics".
+                    2. **Presentation Coach:** Users practice speeches or presentations. They can upload slides (PDF). The AI listens, monitors pacing, and fact-checks against the slides.
+                    3. **Seminar Defense:** A rigorous mode for academic thesis defense or research Q&A.
+                    4. **Live Mode:** The core experience. Uses microphone and camera (optional) for real-time audio interaction.
+                    5. **Feedback Report:** After every session, users get a detailed score (0-10) on Relevance, Clarity, Conciseness, and Technical Accuracy, plus specific Strengths and Improvements.
+                    6. **Settings:** Users can change the AI Voice (Zephyr, Puck, etc.), Language, and Difficulty Level.
+                    
+                    BEHAVIOR:
+                    - Be concise, professional, yet warm.
+                    - Use emojis occasionally to be friendly.
+                    - If asked about technical issues (mic not working), suggest checking browser permissions.
+                    - If asked "How do I start?", explain the "Setup" screen process.
+                    `
+                }
+            });
+            setChatSession(chat);
+        };
+        initChat();
+    }, []);
+
+    useEffect(() => {
+        if (isOpen && messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, isOpen]);
+
+    const handleSend = async () => {
+        if (!inputValue.trim() || !chatSession) return;
+        
+        const userMsg = inputValue.trim();
+        setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+        setInputValue('');
+        setIsLoading(true);
+
+        try {
+            const result = await chatSession.sendMessageStream({ message: userMsg });
+            
+            let fullText = '';
+            setMessages(prev => [...prev, { role: 'model', text: '' }]); // Placeholder
+
+            for await (const chunk of result) {
+                const text = (chunk as GenerateContentResponse).text;
+                fullText += text;
+                setMessages(prev => {
+                    const newMsgs = [...prev];
+                    newMsgs[newMsgs.length - 1].text = fullText;
+                    return newMsgs;
+                });
+            }
+        } catch (error) {
+            console.error("Chat error:", error);
+            setMessages(prev => [...prev, { role: 'model', text: "Sorry, I'm having trouble connecting right now. Please try again." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <>
+            {/* Chat Window */}
+            {isOpen && (
+                <div className="fixed bottom-24 right-6 w-80 h-96 z-50 glass-card rounded-2xl flex flex-col overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out] border border-white/60">
+                    {/* Header */}
+                    <div className="bg-brand-primary/90 backdrop-blur-md p-4 flex justify-between items-center text-white">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-xl">support_agent</span>
+                            <span className="font-bold text-sm">SpeakEasy Support</span>
+                        </div>
+                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 rounded-full p-1 transition-colors">
+                            <span className="material-symbols-outlined text-sm">close</span>
+                        </button>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-white/40">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
+                                    msg.role === 'user' 
+                                    ? 'bg-brand-primary text-white rounded-br-none' 
+                                    : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
+                                }`}>
+                                    {msg.text}
+                                </div>
+                            </div>
+                        ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-white px-3 py-2 rounded-2xl rounded-bl-none shadow-sm flex gap-1 items-center">
+                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-75"></div>
+                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Input */}
+                    <div className="p-3 bg-white/60 backdrop-blur-md border-t border-white/50">
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                placeholder="Ask about features..."
+                                className="w-full pl-4 pr-10 py-2 rounded-full text-xs border border-gray-200 focus:border-brand-primary focus:ring-1 focus:ring-brand-primary outline-none bg-white/80"
+                            />
+                            <button 
+                                onClick={handleSend}
+                                disabled={isLoading || !inputValue.trim()}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-brand-primary text-white rounded-full hover:bg-brand-primary-hover disabled:opacity-50 transition-all flex items-center justify-center"
+                            >
+                                <span className="material-symbols-outlined text-sm">send</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toggle Button */}
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="fixed bottom-6 right-6 w-14 h-14 z-50 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white shadow-lg shadow-brand-primary/40 transition-all hover:scale-110 flex items-center justify-center group"
+            >
+                {isOpen ? (
+                    <span className="material-symbols-outlined text-2xl">expand_more</span>
+                ) : (
+                    <span className="material-symbols-outlined text-2xl animate-pulse-slow">chat_bubble</span>
+                )}
+                <div className="absolute right-full mr-3 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Ask AI Support
+                </div>
+            </button>
+        </>
+    );
+};
+
+// --- WAVE BACKGROUND COMPONENT ---
+const WaveBackground = () => (
+  <>
+    <style>{`
+      @keyframes move-forever {
+        0% { transform: translate3d(-90px,0,0); }
+        100% { transform: translate3d(85px,0,0); }
+      }
+      .parallax > use {
+        animation: move-forever 25s cubic-bezier(.55,.5,.45,.5) infinite;
+      }
+      .parallax > use:nth-child(1) { animation-delay: -2s; animation-duration: 7s; }
+      .parallax > use:nth-child(2) { animation-delay: -3s; animation-duration: 10s; }
+      .parallax > use:nth-child(3) { animation-delay: -4s; animation-duration: 13s; }
+      .parallax > use:nth-child(4) { animation-delay: -5s; animation-duration: 20s; }
+    `}</style>
+    <div className="fixed bottom-0 left-0 w-full z-0 pointer-events-none" style={{ height: '35vh', minHeight: '300px' }}>
+      <svg className="w-full h-full" viewBox="0 24 150 28" preserveAspectRatio="none" shapeRendering="auto">
+        <defs>
+          <path id="gentle-wave" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z" />
+        </defs>
+        <g className="parallax">
+          <use href="#gentle-wave" x="48" y="0" fill="rgba(255,255,255,0.4)" />
+          <use href="#gentle-wave" x="48" y="3" fill="rgba(255,255,255,0.3)" />
+          <use href="#gentle-wave" x="48" y="5" fill="rgba(255,255,255,0.2)" />
+          <use href="#gentle-wave" x="48" y="7" fill="rgba(255,255,255,0.1)" />
+        </g>
+      </svg>
+    </div>
+  </>
+);
 
 // --- REACT COMPONENTS ---
 
@@ -961,7 +1153,7 @@ const App = () => {
 
     // --- RENDER ---
     return (
-        <div className="min-h-screen w-full bg-brand-gradient text-brand-text font-display transition-colors duration-500">
+        <div className="min-h-screen w-full bg-brand-gradient text-brand-text font-display transition-colors duration-500 relative overflow-hidden">
             <style>{`
                 .glass-card { background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1); }
                 .glass-input { background: rgba(255, 255, 255, 0.5); border: none; backdrop-filter: blur(4px); transition: all 0.3s ease; }
@@ -973,283 +1165,288 @@ const App = () => {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
             `}</style>
             
-            <TourGuide steps={tourSteps} isOpen={tourOpen} onClose={() => setTourOpen(false)} stepIndex={tourStep} onNext={handleTourNext} />
-
-            {screen === 'home' && (
-               <div className="relative flex min-h-screen flex-col items-center justify-center p-4">
-                    <div className="w-full max-w-5xl glass-card rounded-3xl p-8 md:p-12 shadow-2xl relative overflow-hidden">
-                         {/* Header */}
-                        <div className="flex justify-between items-center mb-12">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-brand-primary/10 p-2 rounded-xl text-brand-primary">
-                                    <span className="material-symbols-outlined text-3xl">psychology</span>
-                                </div>
-                                <h1 className="text-2xl font-bold tracking-tight text-brand-text m-0">SpeakEasy AI</h1>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                {user ? (
-                                    <div className="flex items-center gap-3 bg-white/50 px-4 py-2 rounded-full border border-white/40">
-                                        <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-8 h-8 rounded-full border border-white" />
-                                        <button onClick={handleLogout} className="text-sm font-semibold text-brand-text-light hover:text-red-500 transition-colors">Sign Out</button>
-                                    </div>
-                                ) : (
-                                    <button onClick={handleLogin} className="text-sm font-bold bg-white text-brand-primary px-6 py-2.5 rounded-full shadow-lg hover:shadow-xl transition-all">Sign In</button>
-                                )}
-                                <button onClick={restartTour} className="w-10 h-10 rounded-full bg-white/40 hover:bg-white/70 flex items-center justify-center text-brand-text transition-all"><span className="material-symbols-outlined">help</span></button>
-                            </div>
-                        </div>
-
-                        {/* Hero */}
-                        <div className="text-center mb-16">
-                            <h2 className="text-5xl md:text-6xl font-black text-brand-text mb-6 tracking-tight leading-tight">Master Your<br/><span className="text-brand-primary">Next Conversation</span></h2>
-                            <p className="text-lg text-brand-text-light max-w-xl mx-auto leading-relaxed">AI-powered simulation for interviews, presentations, and academic defenses. Real-time feedback, zero judgement.</p>
-                        </div>
-
-                        {/* Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {[
-                                { id: 'card-interview', icon: 'work', title: 'Job Interview', desc: 'Behavioral & technical prep', color: 'text-blue-600', bg: 'bg-blue-50' },
-                                { id: 'card-presentation', icon: 'present_to_all', title: 'Presentation', desc: 'Slide & delivery coaching', color: 'text-purple-600', bg: 'bg-purple-50' },
-                                { id: 'card-seminar', icon: 'school', title: 'Seminar Defense', desc: 'Academic rigor check', color: 'text-orange-600', bg: 'bg-orange-50' }
-                            ].map((card, idx) => (
-                                <div 
-                                    key={card.id}
-                                    id={card.id}
-                                    onClick={() => handleStartSessionSetup(idx === 0 ? 'interview' : idx === 1 ? 'presentation' : 'seminar')}
-                                    className="group relative cursor-pointer bg-white/60 hover:bg-white/90 backdrop-blur-md rounded-2xl p-8 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl border border-white/50"
-                                >
-                                    <div className={`w-14 h-14 ${card.bg} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-                                        <span className={`material-symbols-outlined text-3xl ${card.color}`}>{card.icon}</span>
-                                    </div>
-                                    <h3 className="text-xl font-bold text-gray-800 mb-2">{card.title}</h3>
-                                    <p className="text-sm text-gray-500 font-medium">{card.desc}</p>
-                                    <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-2 group-hover:translate-x-0">
-                                        <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-               </div>
-            )}
-
-            {screen === 'setup' && (
-                <div className="flex min-h-screen items-center justify-center p-4">
-                    <div className="w-full max-w-lg glass-card rounded-3xl p-8 shadow-2xl animate-[fadeIn_0.5s_ease-out]">
-                        <button onClick={() => setScreen('home')} className="mb-6 flex items-center text-sm font-bold text-brand-text-light hover:text-brand-primary transition-colors"><span className="material-symbols-outlined text-lg mr-1">arrow_back</span> Back</button>
-                        <h2 className="text-3xl font-bold text-brand-text mb-2 text-center">{sessionType === 'interview' ? 'Interview Setup' : (sessionType === 'seminar' ? 'Seminar Setup' : 'Presentation Setup')}</h2>
-                        <p className="text-center text-brand-text-light mb-8 text-sm">Configure your AI coach preferences</p>
-                        
-                        <div className="space-y-5">
-                            <div>
-                                <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">{sessionType === 'interview' ? 'Target Role' : 'Presentation Title'}</label>
-                                <input 
-                                    name="role" 
-                                    value={settings.role} 
-                                    onChange={handleSettingsChange} 
-                                    className="w-full h-14 px-5 rounded-2xl glass-input text-brand-text font-medium placeholder-gray-400"
-                                    placeholder={sessionType === 'interview' ? "e.g. Product Manager" : "e.g. Q3 Business Review"} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">{sessionType === 'interview' ? 'Focus Topics' : 'Target Audience'}</label>
-                                <textarea 
-                                    name="topics" 
-                                    value={settings.topics} 
-                                    onChange={handleSettingsChange} 
-                                    className="w-full h-32 px-5 py-4 rounded-2xl glass-input text-brand-text font-medium placeholder-gray-400 resize-none"
-                                    placeholder={sessionType === 'interview' ? "e.g. System Design, Leadership" : "e.g. Investors, Students"} 
-                                />
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="relative">
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">AI Voice</label>
-                                    <select name="voice" value={settings.voice} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
-                                        {['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir'].map(v => <option key={v} value={v}>{v}</option>)}
-                                    </select>
-                                    <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
-                                </div>
-                                <div className="relative">
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Language</label>
-                                    <select name="language" value={settings.language} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
-                                        {['English', 'Spanish', 'French', 'German', 'Hindi'].map(l => <option key={l} value={l}>{l}</option>)}
-                                    </select>
-                                    <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
-                                </div>
-                            </div>
-
-                            <button onClick={() => fileInputRef.current?.click()} className="w-full py-4 border-2 border-dashed border-white/60 rounded-2xl bg-white/20 hover:bg-white/40 transition-all flex items-center justify-center gap-3 group cursor-pointer text-brand-text-light font-medium">
-                                <span className={`material-symbols-outlined ${resumeFile ? 'text-green-500' : 'text-brand-primary'}`}>{resumeFile ? 'check_circle' : 'upload_file'}</span>
-                                <span className="group-hover:text-brand-primary transition-colors">{resumeFile ? resumeFile.name : (sessionType === 'interview' ? "Upload Resume (PDF)" : "Upload Slides (PDF)")}</span>
-                                <input type="file" accept=".pdf" ref={fileInputRef} onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)} className="hidden" />
-                            </button>
-
-                            {error && <div className="bg-red-100 text-red-600 text-sm p-3 rounded-xl text-center font-medium">{error}</div>}
-
-                            <button 
-                                onClick={handleStartInterview} 
-                                disabled={isLoading}
-                                className="w-full h-14 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-lg shadow-xl shadow-brand-primary/30 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed mt-4"
-                            >
-                                {loadingAction === 'analyzing_file' ? 'Analyzing...' : loadingAction === 'generating_briefing' ? 'Preparing Session...' : 'Start Session'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <WaveBackground />
             
-            {(screen === 'briefing' || screen === 'interview') && (
-                <div className="flex h-screen flex-col items-center justify-center p-4">
-                     {screen === 'briefing' ? (
-                        <div className="w-full max-w-lg glass-card rounded-3xl p-8 text-center animate-[fadeIn_0.5s_ease-out]">
-                            <h2 className="text-2xl font-bold text-brand-text mb-6">Briefing</h2>
-                            <div className="bg-white/60 rounded-2xl p-6 mb-8 text-left max-h-60 overflow-y-auto custom-scrollbar text-brand-text leading-relaxed shadow-inner">
-                                {briefingText || "Generating your briefing..."}
-                            </div>
-                            <button onClick={() => setShowPermissionModal(true)} disabled={isLoading} className="w-full h-14 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-lg shadow-xl shadow-brand-primary/30 transition-all">
-                                {loadingAction === 'connecting_session' ? 'Connecting...' : 'I\'m Ready'}
-                            </button>
-                        </div>
-                     ) : (
-                        <div className="w-full max-w-2xl flex flex-col h-full max-h-[900px]">
-                            {/* Interview Header */}
-                            <div className="glass-card rounded-2xl p-4 mb-4 flex justify-between items-center shadow-md">
+            <div className="relative z-10">
+                <TourGuide steps={tourSteps} isOpen={tourOpen} onClose={() => setTourOpen(false)} stepIndex={tourStep} onNext={handleTourNext} />
+                <ChatWidget />
+
+                {screen === 'home' && (
+                   <div className="relative flex min-h-screen flex-col items-center justify-center p-4">
+                        <div className="w-full max-w-5xl glass-card rounded-3xl p-8 md:p-12 shadow-2xl relative overflow-hidden">
+                             {/* Header */}
+                            <div className="flex justify-between items-center mb-12">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-                                    <span className="font-bold text-brand-text">Live Session</span>
-                                </div>
-                                {settings.mode === 'timed' && timeLeft !== null && <span className={`font-mono font-bold text-xl ${timeLeft < 30 ? 'text-red-500' : 'text-brand-text'}`}>{timeLeft}s</span>}
-                            </div>
-
-                            {/* Visualizer / Avatar */}
-                            <div className="flex-1 glass-card rounded-3xl p-6 mb-4 flex flex-col items-center justify-center relative overflow-hidden shadow-lg">
-                                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-brand-primary/5"></div>
-                                
-                                {/* AI Avatar Pulse */}
-                                <div className="relative mb-8">
-                                    <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-brand-primary to-purple-500 flex items-center justify-center shadow-2xl z-10 relative">
-                                        <span className="material-symbols-outlined text-5xl text-white">graphic_eq</span>
+                                    <div className="bg-brand-primary/10 p-2 rounded-xl text-brand-primary">
+                                        <span className="material-symbols-outlined text-3xl">psychology</span>
                                     </div>
-                                    {/* Rings */}
-                                    <div className="absolute inset-0 rounded-full border-2 border-brand-primary/30 animate-pulse-slow scale-150"></div>
-                                    <div className="absolute inset-0 rounded-full border border-brand-primary/20 animate-pulse-slow scale-[2]" style={{animationDelay: '1s'}}></div>
+                                    <h1 className="text-2xl font-bold tracking-tight text-brand-text m-0">SpeakEasy AI</h1>
                                 </div>
-
-                                {/* User Camera (PiP) */}
-                                <div className="absolute bottom-4 right-4 w-32 h-40 bg-black rounded-xl overflow-hidden shadow-2xl border-2 border-white/20 group">
-                                    <video ref={videoRef} autoPlay muted playsInline className={`w-full h-full object-cover transform scale-x-[-1] ${isCameraOff ? 'hidden' : ''}`}/>
-                                    {isCameraOff && <div className="w-full h-full flex items-center justify-center text-white/50"><span className="material-symbols-outlined">videocam_off</span></div>}
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                        <button onClick={toggleMute} className="p-2 rounded-full bg-white/20 hover:bg-white/40 text-white"><span className="material-symbols-outlined text-sm">{isMuted ? 'mic_off' : 'mic'}</span></button>
-                                        <button onClick={toggleCamera} className="p-2 rounded-full bg-white/20 hover:bg-white/40 text-white"><span className="material-symbols-outlined text-sm">{isCameraOff ? 'videocam_off' : 'videocam'}</span></button>
-                                    </div>
-                                </div>
-                                
-                                <div className="text-center z-10">
-                                    <p className="text-brand-text-light font-medium">{speakingDuration > 0 ? 'You are speaking...' : 'Listening...'}</p>
-                                    {speakingDuration > 0 && <div className="mt-2 h-1 w-24 bg-gray-200 rounded-full overflow-hidden mx-auto"><div className="h-full bg-green-500 transition-all duration-100" style={{width: `${Math.min(speakingDuration * 5, 100)}%`}}></div></div>}
-                                </div>
-                            </div>
-
-                            {/* Transcript */}
-                            <div className="glass-card rounded-2xl p-4 flex-1 mb-4 overflow-hidden flex flex-col shadow-inner bg-white/30">
-                                <div className="overflow-y-auto custom-scrollbar flex-1 space-y-3 pr-2">
-                                     {transcript.length === 0 && <p className="text-center text-brand-text-light text-sm italic mt-10">Conversation starting...</p>}
-                                     {transcript.map((t, i) => (
-                                         <div key={i} className={`flex flex-col ${t.speaker === 'user' ? 'items-end' : 'items-start'}`}>
-                                             <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm leading-relaxed shadow-sm ${t.speaker === 'user' ? 'bg-brand-primary text-white rounded-br-none' : 'bg-white/80 text-brand-text rounded-bl-none'}`}>
-                                                 {t.text}
-                                             </div>
-                                         </div>
-                                     ))}
-                                     <div ref={transcriptEndRef} />
-                                </div>
-                            </div>
-
-                            <button onClick={stopInterview} disabled={loadingAction === 'generating_feedback'} className="w-full h-14 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-lg shadow-lg shadow-red-500/30 transition-all hover:scale-[1.01]">
-                                {loadingAction === 'generating_feedback' ? 'Analyzing Session...' : 'End Session'}
-                            </button>
-                        </div>
-                     )}
-                </div>
-            )}
-
-            {screen === 'feedback' && feedback && (
-                <div className="flex min-h-screen flex-col items-center justify-center p-4">
-                    <div className="w-full max-w-3xl glass-card rounded-3xl p-8 md:p-10 shadow-2xl">
-                        <h1 className="text-3xl font-bold text-brand-text text-center mb-8">Performance Report</h1>
-                        
-                        <div className="flex flex-col md:flex-row gap-8 mb-10 items-center justify-center">
-                            {/* Overall Score */}
-                            <div className="relative w-40 h-40 flex items-center justify-center">
-                                <svg className="w-full h-full transform -rotate-90">
-                                    <circle cx="80" cy="80" r="70" stroke="white" strokeWidth="12" fill="none" className="opacity-30" />
-                                    <circle cx="80" cy="80" r="70" stroke="#1D4ED8" strokeWidth="12" fill="none" strokeDasharray="440" strokeDashoffset={440 - (440 * feedback.overall) / 10} className="transition-all duration-1000 ease-out" />
-                                </svg>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-5xl font-black text-brand-text">{feedback.overall}</span>
-                                    <span className="text-xs uppercase font-bold text-brand-text-light mt-1">Overall</span>
-                                </div>
-                            </div>
-                            
-                            {/* Detailed Metrics */}
-                            <div className="grid grid-cols-2 gap-4 flex-1 w-full">
-                                {['relevance', 'clarity', 'conciseness', 'technicalAccuracy'].map((metric) => (
-                                    <div key={metric} onClick={() => setActiveScoreModal(metric)} className="bg-white/50 p-4 rounded-2xl cursor-pointer hover:bg-white/80 transition-colors border border-white/50">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="text-xs font-bold text-brand-text-light uppercase tracking-wider">{getScoreTitle(metric)}</span>
-                                            <span className="material-symbols-outlined text-brand-text-light text-sm">info</span>
+                                <div className="flex items-center gap-4">
+                                    {user ? (
+                                        <div className="flex items-center gap-3 bg-white/50 px-4 py-2 rounded-full border border-white/40">
+                                            <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-8 h-8 rounded-full border border-white" />
+                                            <button onClick={handleLogout} className="text-sm font-semibold text-brand-text-light hover:text-red-500 transition-colors">Sign Out</button>
                                         </div>
-                                        <div className="text-2xl font-bold text-brand-text">{(feedback as any)[metric]}/10</div>
+                                    ) : (
+                                        <button onClick={handleLogin} className="text-sm font-bold bg-white text-brand-primary px-6 py-2.5 rounded-full shadow-lg hover:shadow-xl transition-all">Sign In</button>
+                                    )}
+                                    <button onClick={restartTour} className="w-10 h-10 rounded-full bg-white/40 hover:bg-white/70 flex items-center justify-center text-brand-text transition-all"><span className="material-symbols-outlined">help</span></button>
+                                </div>
+                            </div>
+
+                            {/* Hero */}
+                            <div className="text-center mb-16">
+                                <h2 className="text-5xl md:text-6xl font-black text-brand-text mb-6 tracking-tight leading-tight">Master Your<br/><span className="text-brand-primary">Next Conversation</span></h2>
+                                <p className="text-lg text-brand-text-light max-w-xl mx-auto leading-relaxed">AI-powered simulation for interviews, presentations, and academic defenses. Real-time feedback, zero judgement.</p>
+                            </div>
+
+                            {/* Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {[
+                                    { id: 'card-interview', icon: 'work', title: 'Job Interview', desc: 'Behavioral & technical prep', color: 'text-blue-600', bg: 'bg-blue-50' },
+                                    { id: 'card-presentation', icon: 'present_to_all', title: 'Presentation', desc: 'Slide & delivery coaching', color: 'text-purple-600', bg: 'bg-purple-50' },
+                                    { id: 'card-seminar', icon: 'school', title: 'Seminar Defense', desc: 'Academic rigor check', color: 'text-orange-600', bg: 'bg-orange-50' }
+                                ].map((card, idx) => (
+                                    <div 
+                                        key={card.id}
+                                        id={card.id}
+                                        onClick={() => handleStartSessionSetup(idx === 0 ? 'interview' : idx === 1 ? 'presentation' : 'seminar')}
+                                        className="group relative cursor-pointer bg-white/60 hover:bg-white/90 backdrop-blur-md rounded-2xl p-8 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl border border-white/50"
+                                    >
+                                        <div className={`w-14 h-14 ${card.bg} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+                                            <span className={`material-symbols-outlined text-3xl ${card.color}`}>{card.icon}</span>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-gray-800 mb-2">{card.title}</h3>
+                                        <p className="text-sm text-gray-500 font-medium">{card.desc}</p>
+                                        <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-2 group-hover:translate-x-0">
+                                            <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
+                   </div>
+                )}
 
-                        <div className="bg-brand-primary/5 border-l-4 border-brand-primary p-6 rounded-r-xl mb-8">
-                            <h3 className="font-bold text-brand-primary mb-2 uppercase text-xs tracking-wider">Executive Summary</h3>
-                            <p className="text-brand-text text-sm leading-relaxed">{feedback.summary}</p>
-                        </div>
-
-                        {recordedVideoUrl && (
-                             <div className="mb-8">
-                                <h3 className="font-bold text-brand-text mb-3">Session Recording</h3>
-                                <video src={recordedVideoUrl} controls className="w-full rounded-2xl shadow-lg border border-white/20" />
-                                <a href={recordedVideoUrl} download="session.webm" className="inline-block mt-3 text-sm font-bold text-brand-primary hover:underline">Download Video</a>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            <div>
-                                <h3 className="flex items-center gap-2 font-bold text-green-600 mb-4"><span className="material-symbols-outlined">thumb_up</span> Strengths</h3>
-                                <div className="space-y-3">
-                                    {feedback.strengths.map((item, i) => (
-                                        <div key={i} className="bg-green-50/80 p-4 rounded-xl border border-green-100 text-sm">
-                                            <div className="font-bold text-green-800 mb-1">{item.strength}</div>
-                                            <div className="text-green-700 italic">"{item.example}"</div>
-                                        </div>
-                                    ))}
+                {screen === 'setup' && (
+                    <div className="flex min-h-screen items-center justify-center p-4 relative z-10">
+                        <div className="w-full max-w-lg glass-card rounded-3xl p-8 shadow-2xl animate-[fadeIn_0.5s_ease-out]">
+                            <button onClick={() => setScreen('home')} className="mb-6 flex items-center text-sm font-bold text-brand-text-light hover:text-brand-primary transition-colors"><span className="material-symbols-outlined text-lg mr-1">arrow_back</span> Back</button>
+                            <h2 className="text-3xl font-bold text-brand-text mb-2 text-center">{sessionType === 'interview' ? 'Interview Setup' : (sessionType === 'seminar' ? 'Seminar Setup' : 'Presentation Setup')}</h2>
+                            <p className="text-center text-brand-text-light mb-8 text-sm">Configure your AI coach preferences</p>
+                            
+                            <div className="space-y-5">
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">{sessionType === 'interview' ? 'Target Role' : 'Presentation Title'}</label>
+                                    <input 
+                                        name="role" 
+                                        value={settings.role} 
+                                        onChange={handleSettingsChange} 
+                                        className="w-full h-14 px-5 rounded-2xl glass-input text-brand-text font-medium placeholder-gray-400"
+                                        placeholder={sessionType === 'interview' ? "e.g. Product Manager" : "e.g. Q3 Business Review"} 
+                                    />
                                 </div>
-                            </div>
-                            <div>
-                                <h3 className="flex items-center gap-2 font-bold text-red-500 mb-4"><span className="material-symbols-outlined">thumb_down</span> Improvements</h3>
-                                <div className="space-y-3">
-                                    {feedback.improvements.map((item, i) => (
-                                        <div key={i} className="bg-red-50/80 p-4 rounded-xl border border-red-100 text-sm">
-                                            <div className="font-bold text-red-800 mb-1">{item.area}</div>
-                                            <div className="text-red-700 italic mb-2">"{item.example}"</div>
-                                            <div className="bg-white/60 p-2 rounded text-red-900 text-xs"><span className="font-bold">Try:</span> "{item.suggestion}"</div>
-                                        </div>
-                                    ))}
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">{sessionType === 'interview' ? 'Focus Topics' : 'Target Audience'}</label>
+                                    <textarea 
+                                        name="topics" 
+                                        value={settings.topics} 
+                                        onChange={handleSettingsChange} 
+                                        className="w-full h-32 px-5 py-4 rounded-2xl glass-input text-brand-text font-medium placeholder-gray-400 resize-none"
+                                        placeholder={sessionType === 'interview' ? "e.g. System Design, Leadership" : "e.g. Investors, Students"} 
+                                    />
                                 </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="relative">
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">AI Voice</label>
+                                        <select name="voice" value={settings.voice} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
+                                            {['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir'].map(v => <option key={v} value={v}>{v}</option>)}
+                                        </select>
+                                        <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
+                                    </div>
+                                    <div className="relative">
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Language</label>
+                                        <select name="language" value={settings.language} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
+                                            {['English', 'Spanish', 'French', 'German', 'Hindi'].map(l => <option key={l} value={l}>{l}</option>)}
+                                        </select>
+                                        <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
+                                    </div>
+                                </div>
+
+                                <button onClick={() => fileInputRef.current?.click()} className="w-full py-4 border-2 border-dashed border-white/60 rounded-2xl bg-white/20 hover:bg-white/40 transition-all flex items-center justify-center gap-3 group cursor-pointer text-brand-text-light font-medium">
+                                    <span className={`material-symbols-outlined ${resumeFile ? 'text-green-500' : 'text-brand-primary'}`}>{resumeFile ? 'check_circle' : 'upload_file'}</span>
+                                    <span className="group-hover:text-brand-primary transition-colors">{resumeFile ? resumeFile.name : (sessionType === 'interview' ? "Upload Resume (PDF)" : "Upload Slides (PDF)")}</span>
+                                    <input type="file" accept=".pdf" ref={fileInputRef} onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)} className="hidden" />
+                                </button>
+
+                                {error && <div className="bg-red-100 text-red-600 text-sm p-3 rounded-xl text-center font-medium">{error}</div>}
+
+                                <button 
+                                    onClick={handleStartInterview} 
+                                    disabled={isLoading}
+                                    className="w-full h-14 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-lg shadow-xl shadow-brand-primary/30 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed mt-4"
+                                >
+                                    {loadingAction === 'analyzing_file' ? 'Analyzing...' : loadingAction === 'generating_briefing' ? 'Preparing Session...' : 'Start Session'}
+                                </button>
                             </div>
                         </div>
-
-                        <button className="w-full h-14 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-lg shadow-xl shadow-brand-primary/30 transition-all" onClick={() => setScreen('home')}>Back to Home</button>
                     </div>
-                </div>
-            )}
+                )}
+                
+                {(screen === 'briefing' || screen === 'interview') && (
+                    <div className="flex h-screen flex-col items-center justify-center p-4 relative z-10">
+                         {screen === 'briefing' ? (
+                            <div className="w-full max-w-lg glass-card rounded-3xl p-8 text-center animate-[fadeIn_0.5s_ease-out]">
+                                <h2 className="text-2xl font-bold text-brand-text mb-6">Briefing</h2>
+                                <div className="bg-white/60 rounded-2xl p-6 mb-8 text-left max-h-60 overflow-y-auto custom-scrollbar text-brand-text leading-relaxed shadow-inner">
+                                    {briefingText || "Generating your briefing..."}
+                                </div>
+                                <button onClick={() => setShowPermissionModal(true)} disabled={isLoading} className="w-full h-14 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-lg shadow-xl shadow-brand-primary/30 transition-all">
+                                    {loadingAction === 'connecting_session' ? 'Connecting...' : 'I\'m Ready'}
+                                </button>
+                            </div>
+                         ) : (
+                            <div className="w-full max-w-2xl flex flex-col h-full max-h-[900px]">
+                                {/* Interview Header */}
+                                <div className="glass-card rounded-2xl p-4 mb-4 flex justify-between items-center shadow-md">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                                        <span className="font-bold text-brand-text">Live Session</span>
+                                    </div>
+                                    {settings.mode === 'timed' && timeLeft !== null && <span className={`font-mono font-bold text-xl ${timeLeft < 30 ? 'text-red-500' : 'text-brand-text'}`}>{timeLeft}s</span>}
+                                </div>
+
+                                {/* Visualizer / Avatar */}
+                                <div className="flex-1 glass-card rounded-3xl p-6 mb-4 flex flex-col items-center justify-center relative overflow-hidden shadow-lg">
+                                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-brand-primary/5"></div>
+                                    
+                                    {/* AI Avatar Pulse */}
+                                    <div className="relative mb-8">
+                                        <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-brand-primary to-purple-500 flex items-center justify-center shadow-2xl z-10 relative">
+                                            <span className="material-symbols-outlined text-5xl text-white">graphic_eq</span>
+                                        </div>
+                                        {/* Rings */}
+                                        <div className="absolute inset-0 rounded-full border-2 border-brand-primary/30 animate-pulse-slow scale-150"></div>
+                                        <div className="absolute inset-0 rounded-full border border-brand-primary/20 animate-pulse-slow scale-[2]" style={{animationDelay: '1s'}}></div>
+                                    </div>
+
+                                    {/* User Camera (PiP) */}
+                                    <div className="absolute bottom-4 right-4 w-32 h-40 bg-black rounded-xl overflow-hidden shadow-2xl border-2 border-white/20 group">
+                                        <video ref={videoRef} autoPlay muted playsInline className={`w-full h-full object-cover transform scale-x-[-1] ${isCameraOff ? 'hidden' : ''}`}/>
+                                        {isCameraOff && <div className="w-full h-full flex items-center justify-center text-white/50"><span className="material-symbols-outlined">videocam_off</span></div>}
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                            <button onClick={toggleMute} className="p-2 rounded-full bg-white/20 hover:bg-white/40 text-white"><span className="material-symbols-outlined text-sm">{isMuted ? 'mic_off' : 'mic'}</span></button>
+                                            <button onClick={toggleCamera} className="p-2 rounded-full bg-white/20 hover:bg-white/40 text-white"><span className="material-symbols-outlined text-sm">{isCameraOff ? 'videocam_off' : 'videocam'}</span></button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="text-center z-10">
+                                        <p className="text-brand-text-light font-medium">{speakingDuration > 0 ? 'You are speaking...' : 'Listening...'}</p>
+                                        {speakingDuration > 0 && <div className="mt-2 h-1 w-24 bg-gray-200 rounded-full overflow-hidden mx-auto"><div className="h-full bg-green-500 transition-all duration-100" style={{width: `${Math.min(speakingDuration * 5, 100)}%`}}></div></div>}
+                                    </div>
+                                </div>
+
+                                {/* Transcript */}
+                                <div className="glass-card rounded-2xl p-4 flex-1 mb-4 overflow-hidden flex flex-col shadow-inner bg-white/30">
+                                    <div className="overflow-y-auto custom-scrollbar flex-1 space-y-3 pr-2">
+                                         {transcript.length === 0 && <p className="text-center text-brand-text-light text-sm italic mt-10">Conversation starting...</p>}
+                                         {transcript.map((t, i) => (
+                                             <div key={i} className={`flex flex-col ${t.speaker === 'user' ? 'items-end' : 'items-start'}`}>
+                                                 <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm leading-relaxed shadow-sm ${t.speaker === 'user' ? 'bg-brand-primary text-white rounded-br-none' : 'bg-white/80 text-brand-text rounded-bl-none'}`}>
+                                                     {t.text}
+                                                 </div>
+                                             </div>
+                                         ))}
+                                         <div ref={transcriptEndRef} />
+                                    </div>
+                                </div>
+
+                                <button onClick={stopInterview} disabled={loadingAction === 'generating_feedback'} className="w-full h-14 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-lg shadow-lg shadow-red-500/30 transition-all hover:scale-[1.01]">
+                                    {loadingAction === 'generating_feedback' ? 'Analyzing Session...' : 'End Session'}
+                                </button>
+                            </div>
+                         )}
+                    </div>
+                )}
+
+                {screen === 'feedback' && feedback && (
+                    <div className="flex min-h-screen flex-col items-center justify-center p-4 relative z-10">
+                        <div className="w-full max-w-3xl glass-card rounded-3xl p-8 md:p-10 shadow-2xl">
+                            <h1 className="text-3xl font-bold text-brand-text text-center mb-8">Performance Report</h1>
+                            
+                            <div className="flex flex-col md:flex-row gap-8 mb-10 items-center justify-center">
+                                {/* Overall Score */}
+                                <div className="relative w-40 h-40 flex items-center justify-center">
+                                    <svg className="w-full h-full transform -rotate-90">
+                                        <circle cx="80" cy="80" r="70" stroke="white" strokeWidth="12" fill="none" className="opacity-30" />
+                                        <circle cx="80" cy="80" r="70" stroke="#1D4ED8" strokeWidth="12" fill="none" strokeDasharray="440" strokeDashoffset={440 - (440 * feedback.overall) / 10} className="transition-all duration-1000 ease-out" />
+                                    </svg>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                        <span className="text-5xl font-black text-brand-text">{feedback.overall}</span>
+                                        <span className="text-xs uppercase font-bold text-brand-text-light mt-1">Overall</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Detailed Metrics */}
+                                <div className="grid grid-cols-2 gap-4 flex-1 w-full">
+                                    {['relevance', 'clarity', 'conciseness', 'technicalAccuracy'].map((metric) => (
+                                        <div key={metric} onClick={() => setActiveScoreModal(metric)} className="bg-white/50 p-4 rounded-2xl cursor-pointer hover:bg-white/80 transition-colors border border-white/50">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="text-xs font-bold text-brand-text-light uppercase tracking-wider">{getScoreTitle(metric)}</span>
+                                                <span className="material-symbols-outlined text-brand-text-light text-sm">info</span>
+                                            </div>
+                                            <div className="text-2xl font-bold text-brand-text">{(feedback as any)[metric]}/10</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-brand-primary/5 border-l-4 border-brand-primary p-6 rounded-r-xl mb-8">
+                                <h3 className="font-bold text-brand-primary mb-2 uppercase text-xs tracking-wider">Executive Summary</h3>
+                                <p className="text-brand-text text-sm leading-relaxed">{feedback.summary}</p>
+                            </div>
+
+                            {recordedVideoUrl && (
+                                 <div className="mb-8">
+                                    <h3 className="font-bold text-brand-text mb-3">Session Recording</h3>
+                                    <video src={recordedVideoUrl} controls className="w-full rounded-2xl shadow-lg border border-white/20" />
+                                    <a href={recordedVideoUrl} download="session.webm" className="inline-block mt-3 text-sm font-bold text-brand-primary hover:underline">Download Video</a>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                <div>
+                                    <h3 className="flex items-center gap-2 font-bold text-green-600 mb-4"><span className="material-symbols-outlined">thumb_up</span> Strengths</h3>
+                                    <div className="space-y-3">
+                                        {feedback.strengths.map((item, i) => (
+                                            <div key={i} className="bg-green-50/80 p-4 rounded-xl border border-green-100 text-sm">
+                                                <div className="font-bold text-green-800 mb-1">{item.strength}</div>
+                                                <div className="text-green-700 italic">"{item.example}"</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="flex items-center gap-2 font-bold text-red-500 mb-4"><span className="material-symbols-outlined">thumb_down</span> Improvements</h3>
+                                    <div className="space-y-3">
+                                        {feedback.improvements.map((item, i) => (
+                                            <div key={i} className="bg-red-50/80 p-4 rounded-xl border border-red-100 text-sm">
+                                                <div className="font-bold text-red-800 mb-1">{item.area}</div>
+                                                <div className="text-red-700 italic mb-2">"{item.example}"</div>
+                                                <div className="bg-white/60 p-2 rounded text-red-900 text-xs"><span className="font-bold">Try:</span> "{item.suggestion}"</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button className="w-full h-14 rounded-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-lg shadow-xl shadow-brand-primary/30 transition-all" onClick={() => setScreen('home')}>Back to Home</button>
+                        </div>
+                    </div>
+                )}
+            </div>
             
             {showPermissionModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
