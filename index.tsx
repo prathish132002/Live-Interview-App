@@ -428,7 +428,7 @@ const App = () => {
         voice: 'Zephyr',
         language: 'English',
         mode: 'standard', // standard, timed
-        level: 'Intermediate' 
+        level: 'Medium' 
     });
     const [resumeFile, setResumeFile] = useState<File | null>(null);
     const [resumeAnalysis, setResumeAnalysis] = useState<string>('');
@@ -874,8 +874,17 @@ const App = () => {
             let nextStartTime = 0;
             const sources = new Set<AudioBufferSourceNode>();
             
+            const difficultyContext = {
+                'Easy': "Questions should be fundamental and straightforward. Be encouraging, patient, and helpful. Focus on core concepts.",
+                'Medium': "Questions should be of moderate difficulty, covering standard scenarios. Provide balanced feedback.",
+                'Hard': "Questions should be complex, challenging edge cases and deep technical details. Be strict, critical, and simulate a high-pressure environment."
+            };
+
             let systemInstructionText = sessionType === 'interview' ? 
-                `You are a Senior HR + Technical Interviewer. Role: '${settings.role}'. Focus: '${settings.topics}'. Level: '${settings.level}'. Language: ${settings.language}.
+                `You are a Senior HR + Technical Interviewer. Role: '${settings.role}'. Focus: '${settings.topics}'. 
+                DIFFICULTY LEVEL: ${settings.level}.
+                INSTRUCTIONS FOR DIFFICULTY: ${difficultyContext[settings.level as keyof typeof difficultyContext] || difficultyContext['Medium']}
+                Language: ${settings.language}.
                 RULES: Ask ONE question at a time. Provide feedback after every answer. Do not reuse questions.
                 STAGES: Warm-up, Resume, Technical, Behavioral, Evaluation.
                 Include Riddles based on difficulty.` :
@@ -1165,7 +1174,7 @@ const App = () => {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
             `}</style>
             
-            <WaveBackground />
+            {screen === 'home' && <WaveBackground />}
             
             <div className="relative z-10">
                 <TourGuide steps={tourSteps} isOpen={tourOpen} onClose={() => setTourOpen(false)} stepIndex={tourStep} onNext={handleTourNext} />
@@ -1270,6 +1279,24 @@ const App = () => {
                                         <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Language</label>
                                         <select name="language" value={settings.language} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
                                             {['English', 'Spanish', 'French', 'German', 'Hindi'].map(l => <option key={l} value={l}>{l}</option>)}
+                                        </select>
+                                        <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="relative">
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Difficulty</label>
+                                        <select name="level" value={settings.level} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
+                                            {['Easy', 'Medium', 'Hard'].map(l => <option key={l} value={l}>{l}</option>)}
+                                        </select>
+                                        <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
+                                    </div>
+                                    <div className="relative">
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Session Mode</label>
+                                        <select name="mode" value={settings.mode} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
+                                            <option value="standard">Standard</option>
+                                            <option value="timed">Timed Response (90s)</option>
                                         </select>
                                         <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
                                     </div>
