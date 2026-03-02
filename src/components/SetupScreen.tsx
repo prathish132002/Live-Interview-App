@@ -9,6 +9,7 @@ interface SetupScreenProps {
         language: string;
         mode: string;
         level: string;
+        maxQuestions?: string;
     };
     handleSettingsChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
     handleStartInterview: () => void;
@@ -88,7 +89,7 @@ export const SetupScreen = ({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-[1fr_1fr_1fr] gap-4">
                         <div className="relative">
                             <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Difficulty</label>
                             <select name="level" value={settings.level} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
@@ -101,6 +102,13 @@ export const SetupScreen = ({
                             <select name="mode" value={settings.mode} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
                                 <option value="standard">Standard</option>
                                 <option value="timed">Timed Response (90s)</option>
+                            </select>
+                            <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
+                        </div>
+                        <div className="relative">
+                            <label className="block text-xs font-bold uppercase tracking-wider text-brand-text-light mb-2 ml-1">Q Limit</label>
+                            <select name="maxQuestions" value={settings.maxQuestions || 'Unlimited'} onChange={handleSettingsChange} className="w-full h-12 px-4 rounded-xl glass-input text-brand-text text-sm appearance-none cursor-pointer">
+                                {['3', '5', '10', 'Unlimited'].map(l => <option key={l} value={l}>{l}</option>)}
                             </select>
                             <span className="material-symbols-outlined absolute right-3 bottom-3 pointer-events-none text-gray-500 text-sm">expand_more</span>
                         </div>

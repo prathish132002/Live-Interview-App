@@ -29,7 +29,8 @@ const App = () => {
         voice: 'Aoede',
         language: 'English',
         mode: 'standard',
-        level: 'Medium' 
+        level: 'Medium',
+        maxQuestions: 'Unlimited'
     });
     
     const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -40,6 +41,7 @@ const App = () => {
     const [activeScoreModal, setActiveScoreModal] = useState<string | null>(null);
     const [tourOpen, setTourOpen] = useState(false);
     const [tourStep, setTourStep] = useState(0);
+    const [shouldEndSession, setShouldEndSession] = useState(false);
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,8 +66,9 @@ const App = () => {
         toggleCamera,
         transcriptionBuffer,
         setTranscript,
-        isInIntro
-    } = useLiveInterview(settings, resumeAnalysis, sessionType);
+        isInIntro,
+        isAiThinking
+    } = useLiveInterview(settings, resumeAnalysis, sessionType, () => setShouldEndSession(true));
 
     const tourSteps: TourStep[] = [
         { targetId: 'welcome-header', title: 'Welcome to SpeakEasy AI', content: 'Prepare for high-stakes conversations with your personal AI coach.' },
@@ -192,6 +195,13 @@ const App = () => {
         }
     };
 
+    useEffect(() => {
+        if (shouldEndSession) {
+            setShouldEndSession(false);
+            stopInterview();
+        }
+    }, [shouldEndSession]);
+
     const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       const { name, value } = e.target;
       setSettings(prev => ({ ...prev, [name]: value }));
@@ -274,6 +284,7 @@ const App = () => {
                         stopInterview={stopInterview}
                         loadingAction={loadingAction}
                         isInIntro={isInIntro}
+                        isAiThinking={isAiThinking}
                     />
                 )}
 

@@ -15,11 +15,11 @@ interface InterviewScreenProps {
     stopInterview: () => void;
     loadingAction: string | null;
     isInIntro?: boolean;
+    isAiThinking?: boolean;
 }
 
 export const InterviewScreen = ({
     settings,
-    timeLeft,
     videoRef,
     isCameraOff,
     isMuted,
@@ -30,7 +30,9 @@ export const InterviewScreen = ({
     transcriptEndRef,
     stopInterview,
     loadingAction,
-    isInIntro
+    isInIntro,
+    isAiThinking,
+    timeLeft
 }: InterviewScreenProps) => {
     return (
         <div className="flex h-screen flex-col items-center justify-center p-4 relative z-10 w-full">
@@ -73,11 +75,24 @@ export const InterviewScreen = ({
                     </div>
                     
                     <div className="text-center z-10">
-                        <p className="text-brand-text-light font-medium">{speakingDuration > 0 ? 'You are speaking...' : 'Listening...'}</p>
-                        {speakingDuration > 0 && (
-                            <div className="mt-2 h-1 w-24 bg-gray-200 rounded-full overflow-hidden mx-auto">
-                                <div className="h-full bg-green-500 transition-all duration-100" style={{width: `${Math.min(speakingDuration * 5, 100)}%`}}></div>
+                        {isAiThinking ? (
+                            <div className="flex flex-col items-center">
+                                <p className="text-brand-primary font-bold animate-pulse text-lg mb-2">Analyzing response...</p>
+                                <div className="flex gap-1">
+                                    <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                                    <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                    <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                                </div>
                             </div>
+                        ) : (
+                            <>
+                                <p className="text-brand-text-light font-medium">{speakingDuration > 0 ? 'You are speaking...' : 'Listening...'}</p>
+                                {speakingDuration > 0 && (
+                                    <div className="mt-2 h-1 w-24 bg-gray-200 rounded-full overflow-hidden mx-auto">
+                                        <div className="h-full bg-green-500 transition-all duration-100" style={{width: `${Math.min(speakingDuration * 5, 100)}%`}}></div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
