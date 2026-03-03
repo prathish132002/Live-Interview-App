@@ -6,16 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.26.0",
+    "firebase": "^12.5.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "motion": "^12.34.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "remarkable": "^2.0.1",
-    "jspdf": "^2.5.1",
-    "html2canvas": "^1.4.1",
-    "firebase": "^12.5.0"
+    "recharts": "^3.7.0",
+    "remarkable": "^2.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
