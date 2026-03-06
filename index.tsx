@@ -52,6 +52,7 @@ interface Settings {
     difficulty: 'Easy' | 'Medium' | 'Hard';
     mode: string;
     qLimit: string;
+    useCompanySearch?: boolean;
 }
 
 // --- Helper Functions ---
@@ -592,24 +593,26 @@ function DashboardScreen({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
                 <div className="bg-white/60 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/50 shadow-xl h-[400px]">
                     <h3 className="text-xl font-black text-slate-800 mb-8">Score Trend</h3>
-                    <ResponsiveContainer width="100%" height="80%">
-                        <AreaChart data={chartData}>
-                            <defs>
-                                <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} dy={10} />
-                            <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} dx={-10} />
-                            <Tooltip 
-                                contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                itemStyle={{ fontWeight: 'bold', color: '#4f46e5' }}
-                            />
-                            <Area type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorScore)" />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                    <div className="h-[300px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={chartData}>
+                                <defs>
+                                    <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} dy={10} />
+                                <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} dx={-10} />
+                                <Tooltip 
+                                    contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    itemStyle={{ fontWeight: 'bold', color: '#4f46e5' }}
+                                />
+                                <Area type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorScore)" />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
 
                 <div className="bg-white/60 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/50 shadow-xl overflow-y-auto custom-scrollbar">
@@ -694,6 +697,7 @@ function App() {
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [dashboardSessions, setDashboardSessions] = useState<any[]>([]);
+    const [fromDashboard, setFromDashboard] = useState(false);
     
     // Setup State
     const [sessionType, setSessionType] = useState<SessionType>('interview');
@@ -708,6 +712,7 @@ function App() {
         difficulty: 'Medium',
         mode: 'Standard',
         qLimit: 'Unlimited',
+        useCompanySearch: false,
     });
     const [resumeFile, setResumeFile] = useState<File | null>(null);
     const [resumeAnalysis, setResumeAnalysis] = useState<string>('');
@@ -748,6 +753,7 @@ function App() {
     const [transcript, setTranscript] = useState<Array<{speaker: 'user' | 'ai', text: string}>>([]);
     const [isMuted, setIsMuted] = useState(false);
     const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+    const [tokenUsage, setTokenUsage] = useState<{ prompt: number; response: number; total: number }>({ prompt: 0, response: 0, total: 0 });
     const [currentTestimonialIndex, setCurrentTestimonialIndex] = useState(0);
 
     // Refs for Audio & Logic
@@ -778,6 +784,8 @@ function App() {
         scriptProcessor: null,
         source: null,
     });
+
+    const [isPaused, setIsPaused] = useState(false);
 
     // --- Effects ---
 
@@ -814,7 +822,19 @@ function App() {
             const sessionsData = querySnapshot.docs.map(doc => doc.data());
             setDashboardSessions(sessionsData);
         } catch (err) {
-            console.error("Error fetching sessions:", err);
+            console.warn("Error fetching sessions from Firestore, falling back to localStorage:", err);
+            // Fallback to localStorage
+            try {
+                const localData = localStorage.getItem(`sessions_${user.uid}`);
+                if (localData) {
+                    const parsed = JSON.parse(localData);
+                    // Sort by timestamp desc just in case
+                    parsed.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                    setDashboardSessions(parsed);
+                }
+            } catch (localErr) {
+                console.error("Error reading from localStorage:", localErr);
+            }
         }
     };
 
@@ -909,9 +929,11 @@ function App() {
         setLoadingAction(resumeFile ? 'analyzing_file' : 'generating_briefing');
         setError(null);
         setBriefingText('');
+        setTokenUsage({ prompt: 0, response: 0, total: 0 }); // Reset token usage
         
         let currentResumeAnalysis = '';
         let companyGrounding = '';
+        let currentTokens = { prompt: 0, response: 0, total: 0 };
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -935,6 +957,13 @@ function App() {
                             ]
                         }
                     });
+                    
+                    if (resumeResponse.usageMetadata) {
+                        currentTokens.prompt += resumeResponse.usageMetadata.promptTokenCount || 0;
+                        currentTokens.response += resumeResponse.usageMetadata.candidatesTokenCount || 0;
+                        currentTokens.total += resumeResponse.usageMetadata.totalTokenCount || 0;
+                    }
+
                     currentResumeAnalysis = resumeResponse.text || '';
                     setResumeAnalysis(currentResumeAnalysis);
                 } catch (resumeErr: any) {
@@ -943,7 +972,7 @@ function App() {
             }
 
             // Company Grounding
-            if (sessionType === 'interview' && (settings.company || settings.jobDescription)) {
+            if (sessionType === 'interview' && (settings.company || settings.jobDescription) && settings.useCompanySearch) {
                 setLoadingAction('grounding_company');
                 const groundingPrompt = `I am preparing for an interview at '${settings.company}' for the role of '${settings.role}'. 
                 ${settings.jobDescription ? `Here is the job description/link: ${settings.jobDescription}` : ''}
@@ -961,6 +990,13 @@ function App() {
                             tools: [{ googleSearch: {} }]
                         }
                     });
+                    
+                    if (groundingResponse.usageMetadata) {
+                        currentTokens.prompt += groundingResponse.usageMetadata.promptTokenCount || 0;
+                        currentTokens.response += groundingResponse.usageMetadata.candidatesTokenCount || 0;
+                        currentTokens.total += groundingResponse.usageMetadata.totalTokenCount || 0;
+                    }
+
                     companyGrounding = groundingResponse.text || '';
                 } catch (groundErr: any) {
                     console.error("Company grounding failed", groundErr);
@@ -968,30 +1004,39 @@ function App() {
             }
             
             setLoadingAction('generating_briefing');
-            let textPrompt = "";
+            let generatedBriefing = "";
+            
             if (sessionType === 'interview') {
-                textPrompt = `Generate a short, friendly, and professional welcome message for a job interview. The role is '${settings.role}', the focus category is '${settings.topicCategory}', the specific topics are '${settings.topics}', and the difficulty level is '${settings.difficulty}'. Welcome the candidate, state the role and topics, and wish them luck. The message must be entirely in ${settings.language}.`;
+                generatedBriefing = `Welcome to your mock interview simulation.\n\nRole: ${settings.role}\nFocus: ${settings.topicCategory} (${settings.topics})\nDifficulty: ${settings.difficulty}\nLanguage: ${settings.language}`;
+                
                 if (settings.company) {
-                    textPrompt += `\n\nTarget Company: ${settings.company}. Mention that this interview is specifically tailored for ${settings.company}.`;
+                    generatedBriefing += `\nTarget Company: ${settings.company}`;
                 }
+                
                 if (currentResumeAnalysis) {
-                    textPrompt += `\n\nContext: The candidate has uploaded a resume. Here is the summary: ${currentResumeAnalysis}. Acknowledge that you have reviewed their resume and mention that you will be asking questions about their projects.`;
+                    generatedBriefing += `\n\nResume Analysis Complete. I have reviewed your background and will tailor questions accordingly.`;
                 }
+                
                 if (companyGrounding) {
-                    textPrompt += `\n\nCompany Insights (use this to make the welcome more specific): ${companyGrounding}`;
+                    generatedBriefing += `\n\nCompany Insights Loaded. The interview will reflect current company values and recent news.`;
                 }
+                
+                generatedBriefing += `\n\nGood luck! I am ready to begin when you are.`;
             } else {
-                textPrompt = `Generate a short, encouraging welcome message for a ${sessionType === 'seminar' ? 'seminar' : 'presentation'} practice session. The user is presenting on '${settings.role}' to an audience of '${settings.topics}'. The focus category is '${settings.topicCategory}' and the difficulty level is '${settings.difficulty}'. Welcome them, acknowledge you have reviewed their materials (if any), and ask them to begin their presentation whenever they are ready. State that you will listen actively and interrupt ONLY if you hear a factual error based on their slides. The message must be entirely in ${settings.language}.`;
+                generatedBriefing = `Welcome to your ${sessionType === 'seminar' ? 'seminar' : 'presentation'} practice session.\n\nTopic: ${settings.role}\nAudience: ${settings.topics}\nFocus: ${settings.topicCategory}\nDifficulty: ${settings.difficulty}\nLanguage: ${settings.language}`;
+                
                 if (currentResumeAnalysis) {
-                    textPrompt += `\n\nContext: The user has uploaded slides. Summary: ${currentResumeAnalysis}.`;
+                    generatedBriefing += `\n\nMaterials Analyzed. I will be fact-checking your presentation against the provided documents.`;
                 }
+                
+                generatedBriefing += `\n\nPlease begin your presentation whenever you are ready.`;
             }
             
-            const textResponse = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: textPrompt,
-            });
-            setBriefingText(textResponse.text || '');
+            // Artificial delay for UX consistency
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            setTokenUsage(currentTokens);
+            setBriefingText(generatedBriefing);
             
             // Store grounding in resumeAnalysis if it's an interview so it gets passed to the live session
             if (companyGrounding) {
@@ -1018,6 +1063,7 @@ function App() {
         
         isSessionActive.current = true;
         isAiSpeakingRef.current = false;
+        setIsPaused(false);
         transcriptionBuffer.current = { input: '', output: '' };
         nextAudioStartTimeRef.current = 0;
 
@@ -1084,7 +1130,7 @@ function App() {
                         const scriptProcessor = ctx.createScriptProcessor(4096, 1, 1);
                         
                         scriptProcessor.onaudioprocess = (e) => {
-                            if (!isSessionActive.current) return;
+                            if (!isSessionActive.current || isPaused) return;
                             
                             // Mute input if AI is speaking to prevent echo
                             if (isAiSpeakingRef.current) {
@@ -1282,25 +1328,53 @@ function App() {
                 contents: prompt,
                 config: { responseMimeType: 'application/json' }
             });
+            
+            if (response.usageMetadata) {
+                setTokenUsage(prev => ({
+                    prompt: prev.prompt + (response.usageMetadata?.promptTokenCount || 0),
+                    response: prev.response + (response.usageMetadata?.candidatesTokenCount || 0),
+                    total: prev.total + (response.usageMetadata?.totalTokenCount || 0)
+                }));
+            }
 
             const result = JSON.parse(response.text || '{}');
             setFeedback(result);
+            setFromDashboard(false);
             setScreen('feedback');
 
             // Save to Firebase if user is logged in
             if (user) {
+                const sessionData = {
+                    userId: user.uid,
+                    userEmail: user.email,
+                    sessionType,
+                    settings,
+                    feedback: result,
+                    timestamp: Timestamp.now(),
+                    transcript: sessionTranscript
+                };
+
                 try {
-                    await addDoc(collection(db, "sessions"), {
-                        userId: user.uid,
-                        userEmail: user.email,
-                        sessionType,
-                        settings,
-                        feedback: result,
-                        timestamp: Timestamp.now(),
-                        transcript: sessionTranscript
-                    });
+                    await addDoc(collection(db, "sessions"), sessionData);
                 } catch (dbErr) {
-                    console.error("Error saving session to DB:", dbErr);
+                    console.warn("Error saving session to DB, falling back to localStorage:", dbErr);
+                    // Fallback to localStorage
+                    try {
+                        const localKey = `sessions_${user.uid}`;
+                        const existing = localStorage.getItem(localKey);
+                        const sessions = existing ? JSON.parse(existing) : [];
+                        
+                        // Convert Timestamp to plain object for JSON
+                        const localSessionData = {
+                            ...sessionData,
+                            timestamp: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 }
+                        };
+                        
+                        sessions.unshift(localSessionData);
+                        localStorage.setItem(localKey, JSON.stringify(sessions));
+                    } catch (localErr) {
+                        console.error("Error saving to localStorage:", localErr);
+                    }
                 }
             }
         } catch (err: any) {
@@ -1309,6 +1383,28 @@ function App() {
             setTimeout(() => setScreen('setup'), 3000);
         } finally {
             setLoadingAction(null);
+        }
+    };
+
+    const togglePause = async () => {
+        if (isPaused) {
+            // Resume
+            setIsPaused(false);
+            if (audioRefs.current.inputAudioContext) {
+                await audioRefs.current.inputAudioContext.resume();
+            }
+            if (audioRefs.current.outputAudioContext) {
+                await audioRefs.current.outputAudioContext.resume();
+            }
+        } else {
+            // Pause
+            setIsPaused(true);
+            if (audioRefs.current.inputAudioContext) {
+                await audioRefs.current.inputAudioContext.suspend();
+            }
+            if (audioRefs.current.outputAudioContext) {
+                await audioRefs.current.outputAudioContext.suspend();
+            }
         }
     };
 
@@ -1413,6 +1509,7 @@ function App() {
                                 setSettings(s.settings);
                                 setSessionType(s.sessionType);
                                 setTranscript(s.transcript || []);
+                                setFromDashboard(true);
                                 setScreen('feedback');
                             }}
                         />
@@ -1565,6 +1662,18 @@ function App() {
                                                     onChange={(e) => setSettings({...settings, company: e.target.value})}
                                                     placeholder="e.g. Google, Meta, Netflix"
                                                 />
+                                                <div className="flex items-center gap-2 mt-3 ml-1">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        id="useCompanySearch"
+                                                        checked={settings.useCompanySearch || false}
+                                                        onChange={(e) => setSettings({...settings, useCompanySearch: e.target.checked})}
+                                                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                    <label htmlFor="useCompanySearch" className="text-xs font-bold text-slate-500 cursor-pointer select-none">
+                                                        Include Research (~1k Tokens)
+                                                    </label>
+                                                </div>
                                             </div>
                                             <div>
                                                 <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
@@ -1781,6 +1890,12 @@ function App() {
                                             >
                                                 <span className="material-symbols-outlined text-2xl">{isMuted ? 'mic_off' : 'mic'}</span>
                                             </button>
+                                            <button 
+                                                onClick={togglePause}
+                                                className={`w-14 h-14 rounded-2xl flex items-center justify-center backdrop-blur-xl transition-all border border-white/20 ${isPaused ? 'bg-amber-500/90 text-white' : 'bg-white/20 text-white hover:bg-white/30'}`}
+                                            >
+                                                <span className="material-symbols-outlined text-2xl">{isPaused ? 'play_arrow' : 'pause'}</span>
+                                            </button>
                                             <button className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/20 text-white backdrop-blur-xl border border-white/20 hover:bg-white/30 transition-all">
                                                 <span className="material-symbols-outlined text-2xl">videocam</span>
                                             </button>
@@ -1788,14 +1903,41 @@ function App() {
                                         
                                         <button 
                                             onClick={handleEndSession}
-                                            className="px-8 py-4 bg-rose-500 text-white rounded-2xl font-black text-sm shadow-lg hover:bg-rose-600 transition-all flex items-center gap-2"
+                                            disabled={loadingAction === 'generating_feedback'}
+                                            className="px-8 py-4 bg-rose-500 text-white rounded-2xl font-black text-sm shadow-lg hover:bg-rose-600 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                                         >
-                                            <span className="material-symbols-outlined text-sm">close</span>
-                                            End Session
+                                            {loadingAction === 'generating_feedback' ? (
+                                                <>
+                                                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                                                    Analyzing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="material-symbols-outlined text-sm">close</span>
+                                                    End Session
+                                                </>
+                                            )}
                                         </button>
                                     </div>
                                 </div>
                                 
+                                {isPaused && (
+                                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-10 flex items-center justify-center rounded-[2.5rem]">
+                                        <div className="bg-white/90 p-8 rounded-3xl text-center shadow-2xl">
+                                            <span className="material-symbols-outlined text-6xl text-amber-500 mb-4">pause_circle</span>
+                                            <h3 className="text-2xl font-black text-slate-800 mb-2">Session Paused</h3>
+                                            <p className="text-slate-600 font-bold mb-6">Take a break. Resume when ready.</p>
+                                            <button 
+                                                onClick={togglePause}
+                                                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 mx-auto"
+                                            >
+                                                <span className="material-symbols-outlined">play_arrow</span>
+                                                Resume Session
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {loadingAction === 'connecting' && (
                                     <div className="flex items-center justify-center p-12 bg-white/60 rounded-[2rem] border border-white/50 backdrop-blur-xl">
                                         <div className="text-center">
@@ -1862,6 +2004,9 @@ function App() {
                                     <div className="bg-white/80 p-6 rounded-3xl shadow-xl border border-white flex flex-col items-center justify-center min-w-[140px]">
                                         <span className="text-4xl font-black text-indigo-600 leading-none">{feedback.overallScore}</span>
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Overall Score</span>
+                                        <div className="mt-2 text-[8px] text-slate-400 font-mono">
+                                            {tokenUsage.total > 0 && `${tokenUsage.total} Tokens Used`}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2059,7 +2204,16 @@ function App() {
                                     )}
                                 </div>
 
-                                <div className="mt-12 pt-8 border-t border-white/30 flex justify-center">
+                                <div className="mt-12 pt-8 border-t border-white/30 flex justify-center gap-4">
+                                    {fromDashboard && (
+                                        <button 
+                                            onClick={() => setScreen('dashboard')}
+                                            className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl hover:shadow-2xl active:scale-95 flex items-center gap-2"
+                                        >
+                                            <span className="material-symbols-outlined text-lg">arrow_back</span>
+                                            Back to Dashboard
+                                        </button>
+                                    )}
                                     <button 
                                         onClick={() => setScreen('home')}
                                         className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl hover:shadow-2xl active:scale-95"
