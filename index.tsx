@@ -1266,122 +1266,88 @@ function PrepScreen({ onBack }: { onBack: () => void }) {
     );
 }
 
-function HelpModal({ onClose }: { onClose: () => void }) {
+function HelpScreen({ onBack }: { onBack: () => void }) {
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-            <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
-            >
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600">
-                            <span className="material-symbols-outlined">help</span>
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-white/40 backdrop-blur-md">
+            <div className="px-8 py-6 flex items-center justify-between border-b border-white/50 sticky top-0 z-10 bg-white/40 backdrop-blur-md">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-indigo-600">help</span>
+                        Help & Support
+                    </h2>
+                    <p className="text-slate-500 font-medium text-sm">How to use SpeakEasy AI</p>
+                </div>
+                <button 
+                    onClick={onBack}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 rounded-xl font-bold shadow-sm hover:shadow-md transition-all border border-slate-100 text-sm"
+                >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    Back
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+                <div className="max-w-3xl mx-auto space-y-8">
+                    {/* Welcome Section */}
+                    <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 text-center">
+                        <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <span className="material-symbols-outlined text-indigo-600 text-3xl">waving_hand</span>
                         </div>
-                        <h2 className="text-xl font-black text-slate-800">How to Use SpeakEasy AI</h2>
+                        <h3 className="text-2xl font-bold text-slate-900 mb-2">Welcome to SpeakEasy AI</h3>
+                        <p className="text-slate-600 leading-relaxed max-w-lg mx-auto">
+                            Your personal AI communication coach. We help you master interviews, presentations, and academic defenses through realistic practice and instant feedback.
+                        </p>
                     </div>
-                    <button 
-                        onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-lg">close</span>
-                    </button>
-                </div>
-                
-                <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                    {/* Section 1: Getting Started */}
-                    <section>
-                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">1</span>
-                            Getting Started
-                        </h3>
-                        <div className="grid md:grid-cols-3 gap-4">
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="material-symbols-outlined text-indigo-500 mb-2">work</span>
-                                <h4 className="font-bold text-slate-700 text-sm mb-1">Select Mode</h4>
-                                <p className="text-xs text-slate-500">Choose Interview, Presentation, or Seminar.</p>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="material-symbols-outlined text-purple-500 mb-2">tune</span>
-                                <h4 className="font-bold text-slate-700 text-sm mb-1">Configure</h4>
-                                <p className="text-xs text-slate-500">Set your role, topic, and difficulty.</p>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <span className="material-symbols-outlined text-emerald-500 mb-2">mic</span>
-                                <h4 className="font-bold text-slate-700 text-sm mb-1">Speak</h4>
-                                <p className="text-xs text-slate-500">Interact naturally with the AI coach.</p>
-                            </div>
-                        </div>
-                    </section>
 
-                    {/* Section 2: Features */}
-                    <section>
-                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">2</span>
-                            Key Features
-                        </h3>
-                        <ul className="space-y-3">
-                            <li className="flex items-start gap-3">
-                                <span className="material-symbols-outlined text-indigo-500 mt-0.5">graphic_eq</span>
-                                <div>
-                                    <p className="font-bold text-slate-700 text-sm">Real-time Voice Interaction</p>
-                                    <p className="text-xs text-slate-500">Low-latency audio conversation powered by Gemini 2.5 Flash.</p>
+                    {/* How it Works */}
+                    <div className="grid md:grid-cols-3 gap-6">
+                        {[
+                            { icon: 'settings', title: '1. Setup', desc: 'Choose your scenario (Interview, Presentation, etc.) and customize the difficulty.' },
+                            { icon: 'mic', title: '2. Speak', desc: 'Have a real-time voice conversation with our AI coach. Speak naturally!' },
+                            { icon: 'analytics', title: '3. Feedback', desc: 'Get instant analysis on your clarity, confidence, and content quality.' }
+                        ].map((step, i) => (
+                            <div key={i} className="bg-white/60 p-6 rounded-2xl border border-white/50 text-center">
+                                <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center mx-auto mb-3 text-indigo-600 font-bold">
+                                    {i + 1}
                                 </div>
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="material-symbols-outlined text-indigo-500 mt-0.5">analytics</span>
-                                <div>
-                                    <p className="font-bold text-slate-700 text-sm">Detailed Feedback</p>
-                                    <p className="text-xs text-slate-500">Get scores on clarity, relevance, and confidence after every session.</p>
-                                </div>
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="material-symbols-outlined text-indigo-500 mt-0.5">manage_accounts</span>
-                                <div>
-                                    <p className="font-bold text-slate-700 text-sm">Personalized Profile</p>
-                                    <p className="text-xs text-slate-500">Save your career details to get tailored questions.</p>
-                                </div>
-                            </li>
-                        </ul>
-                    </section>
+                                <h4 className="font-bold text-slate-800 mb-1">{step.title}</h4>
+                                <p className="text-slate-500 text-sm">{step.desc}</p>
+                            </div>
+                        ))}
+                    </div>
 
-                    {/* Section 3: Tips */}
-                    <section>
-                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">3</span>
-                            Pro Tips
-                        </h3>
-                        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
-                            <ul className="space-y-2">
-                                <li className="flex items-center gap-2 text-sm text-indigo-900 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                                    Use headphones to prevent audio feedback.
-                                </li>
-                                <li className="flex items-center gap-2 text-sm text-indigo-900 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                                    Speak clearly and at a moderate pace.
-                                </li>
-                                <li className="flex items-center gap-2 text-sm text-indigo-900 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                                    Review your dashboard to track progress over time.
-                                </li>
-                            </ul>
+                    {/* FAQ Section */}
+                    <div className="space-y-4">
+                        <h3 className="text-xl font-bold text-slate-900 px-2">Frequently Asked Questions</h3>
+                        {[
+                            { q: "Is my audio recorded?", a: "No. Your audio is processed in real-time and then immediately discarded. We only save the text transcript for your review." },
+                            { q: "Can I use this on mobile?", a: "Yes! SpeakEasy AI works on all modern mobile browsers. For the best experience, use Safari on iOS and Chrome on Android." },
+                            { q: "How accurate is the feedback?", a: "Our feedback is powered by Google's Gemini 2.5 Flash model, which is state-of-the-art for language understanding and reasoning." }
+                        ].map((faq, i) => (
+                            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                                <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-slate-400">help</span>
+                                    {faq.q}
+                                </h4>
+                                <p className="text-slate-600 text-sm leading-relaxed pl-8">{faq.a}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Contact */}
+                    <div className="bg-slate-900 text-white rounded-[2rem] p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                        <div className="relative z-10">
+                            <h3 className="text-xl font-bold mb-2">Still have questions?</h3>
+                            <p className="text-slate-400 text-sm mb-6">We're here to help you succeed.</p>
+                            <a href="mailto:support@speakeasy.ai" className="inline-flex items-center gap-2 px-6 py-3 bg-white text-slate-900 rounded-xl font-bold hover:bg-slate-100 transition-colors">
+                                <span className="material-symbols-outlined">mail</span>
+                                Contact Support
+                            </a>
                         </div>
-                    </section>
+                    </div>
                 </div>
-                
-                <div className="p-6 border-t border-slate-100 bg-slate-50/50">
-                    <button 
-                        onClick={onClose}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all"
-                    >
-                        Got it!
-                    </button>
-                </div>
-            </motion.div>
+            </div>
         </div>
     );
 }
@@ -1393,7 +1359,6 @@ function App() {
     const [error, setError] = useState<string | null>(null);
     const [dashboardSessions, setDashboardSessions] = useState<any[]>([]);
     const [fromDashboard, setFromDashboard] = useState(false);
-    const [showHelpModal, setShowHelpModal] = useState(false);
     
     // Setup State
     const [sessionType, setSessionType] = useState<SessionType>('interview');
@@ -2189,7 +2154,7 @@ function App() {
                                 </button>
                             )}
                             <span 
-                                onClick={() => setShowHelpModal(true)}
+                                onClick={() => setScreen('help')}
                                 className="material-symbols-outlined text-slate-500 cursor-pointer hover:text-slate-800 transition-colors"
                             >
                                 help
@@ -2200,13 +2165,16 @@ function App() {
 
                 {/* Content Area */}
                 <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar">
-                    {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
                     
                     {error && (
                         <div className="mx-8 mt-4 bg-red-500/10 border border-red-500/20 text-red-700 px-6 py-3 rounded-2xl flex items-center gap-3 animate-pulse">
                             <span className="material-symbols-outlined">error</span>
                             <span className="font-medium">{error}</span>
                         </div>
+                    )}
+
+                    {screen === 'help' && (
+                        <HelpScreen onBack={() => setScreen('home')} />
                     )}
 
                     {screen === 'profile' && (
