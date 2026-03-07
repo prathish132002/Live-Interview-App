@@ -842,6 +842,430 @@ const testimonials = [
     }
 ];
 
+const prepContent = [
+    {
+        id: 'intro',
+        title: 'Introduction',
+        icon: 'waving_hand',
+        color: 'blue',
+        questions: [
+            {
+                q: "Tell me about yourself.",
+                why: "To see if you can communicate clearly and connect your past to this role.",
+                do: [
+                    "Use the 'Present, Past, Future' formula.",
+                    "Highlight 2-3 major achievements relevant to the job.",
+                    "Keep it under 2 minutes."
+                ],
+                dont: [
+                    "Recite your resume line-by-line.",
+                    "Talk about your childhood or personal life.",
+                    "Ramble without a clear structure."
+                ],
+                example: "Currently, I'm a Software Engineer at TechCorp focusing on scalable APIs. Before that, I built e-commerce platforms at StartUp Inc where I increased sales by 20%. I'm looking to bring my backend expertise to a larger team like yours."
+            },
+            {
+                q: "Why do you want to work here?",
+                why: "To test your research and genuine interest in the company.",
+                do: [
+                    "Mention specific projects or values of the company.",
+                    "Connect their mission to your career goals.",
+                    "Show enthusiasm for their product/service."
+                ],
+                dont: [
+                    "Say 'I need a job' or 'The pay is good'.",
+                    "Give a generic answer that fits any company.",
+                    "Admit you haven't researched them."
+                ],
+                example: "I've been following your work on sustainable energy solutions, specifically the new SolarX project. My background in IoT aligns perfectly with your mission to optimize energy usage, and I'm excited to contribute to that impact."
+            }
+        ]
+    },
+    {
+        id: 'behavioral',
+        title: 'Behavioral',
+        icon: 'psychology',
+        color: 'purple',
+        questions: [
+            {
+                q: "What is your greatest strength?",
+                why: "To see if your skills match the job requirements.",
+                do: [
+                    "Pick a strength relevant to the role.",
+                    "Back it up with a specific story (STAR method).",
+                    "Focus on quality over quantity."
+                ],
+                dont: [
+                    "Be vague (e.g., 'I'm a hard worker').",
+                    "Be arrogant or humble-brag.",
+                    "List too many strengths without proof."
+                ],
+                example: "My greatest strength is problem-solving under pressure. When our server crashed during Black Friday, I quickly identified the bottleneck and deployed a fix in 15 minutes, saving thousands in potential lost revenue."
+            },
+            {
+                q: "What is your greatest weakness?",
+                why: "To test your self-awareness and ability to improve.",
+                do: [
+                    "Choose a real weakness (not a hidden strength).",
+                    "Explain how you are working to overcome it.",
+                    "Show growth and maturity."
+                ],
+                dont: [
+                    "Say 'I work too hard' or 'I'm a perfectionist'.",
+                    "Say 'I have no weaknesses'.",
+                    "Mention a weakness that is critical to the job (e.g., 'I'm bad at coding' for a dev role)."
+                ],
+                example: "I sometimes struggle with public speaking. To improve, I joined a local Toastmasters club and have been volunteering to lead our weekly team stand-ups to get more practice."
+            }
+        ]
+    },
+    {
+        id: 'situational',
+        title: 'Situational',
+        icon: 'lightbulb',
+        color: 'emerald',
+        questions: [
+            {
+                q: "Tell me about a challenge you faced.",
+                why: "To assess your resilience and problem-solving skills.",
+                do: [
+                    "Use the STAR method (Situation, Task, Action, Result).",
+                    "Focus on your specific actions.",
+                    "End with a positive outcome or lesson learned."
+                ],
+                dont: [
+                    "Blame others or complain about the situation.",
+                    "Focus too much on the problem, not the solution.",
+                    "Pick a trivial or personal conflict."
+                ],
+                example: "In my last role, we had a tight deadline and a team member fell ill. I reorganized the tasks, took on the critical path items myself, and we delivered the project on time with zero bugs."
+            },
+            {
+                q: "Describe a time you failed.",
+                why: "To see how you handle failure and learn from mistakes.",
+                do: [
+                    "Be honest and take responsibility.",
+                    "Explain what you learned.",
+                    "Show how you applied that lesson later."
+                ],
+                dont: [
+                    "Say you never fail.",
+                    "Blame external factors.",
+                    "Pick a failure that was catastrophic or unethical."
+                ],
+                example: "I once missed a critical bug in a release because I rushed the testing. It caused a minor outage. I learned the importance of automated testing and implemented a new CI/CD pipeline to prevent it from happening again."
+            }
+        ]
+    },
+    {
+        id: 'questions-to-ask',
+        title: 'Questions to Ask',
+        icon: 'contact_support',
+        color: 'orange',
+        questions: [
+            {
+                q: "What does success look like in this role?",
+                why: "To understand expectations and show you are goal-oriented.",
+                do: [
+                    "Ask about 30/60/90 day goals.",
+                    "Ask how performance is measured.",
+                    "Relate it back to your skills."
+                ],
+                dont: [
+                    "Ask 'What do I have to do?'.",
+                    "Look disinterested in the answer.",
+                    "Interrupt the interviewer."
+                ],
+                example: "If I were to join, what key milestones would you like me to hit in the first 90 days to be considered successful?"
+            },
+            {
+                q: "Can you tell me about the team culture?",
+                why: "To see if you will fit in and enjoy working there.",
+                do: [
+                    "Ask about collaboration styles.",
+                    "Ask about team events or traditions.",
+                    "Ask how they handle conflict."
+                ],
+                dont: [
+                    "Ask 'Is it easy?'.",
+                    "Ask about vacation time immediately.",
+                    "Complain about your current team."
+                ],
+                example: "How does the team collaborate on big projects? Is it more independent work or do you have a lot of pair programming/brainstorming sessions?"
+            }
+        ]
+    },
+    {
+        id: 'salary',
+        title: 'Salary Negotiation',
+        icon: 'attach_money',
+        color: 'green',
+        questions: [
+            {
+                q: "What are your salary expectations?",
+                why: "To see if you are within their budget.",
+                do: [
+                    "Give a range based on research.",
+                    "Say you are flexible for the right opportunity.",
+                    "Ask for their budget first if possible."
+                ],
+                dont: [
+                    "Give a specific low number.",
+                    "Say 'I don't know'.",
+                    "Ask for way more than the market rate."
+                ],
+                example: "Based on my market research and experience, I'm looking for a base salary between $X and $Y, but I am flexible depending on the full compensation package."
+            },
+            {
+                q: "Is the offer negotiable?",
+                why: "To see if there is room for improvement in the offer.",
+                do: [
+                    "Express gratitude for the offer first.",
+                    "Be polite but firm.",
+                    "Have data to back up your request."
+                ],
+                dont: [
+                    "Be aggressive or demanding.",
+                    "Give an ultimatum immediately.",
+                    "Lie about other offers."
+                ],
+                example: "I'm really excited about the offer and the team. However, based on my experience and the market rate, I was hoping for a base salary closer to $X. Is there any flexibility there?"
+            }
+        ]
+    },
+    {
+        id: 'challenging',
+        title: 'Challenging Questions',
+        icon: 'warning',
+        color: 'red',
+        questions: [
+            {
+                q: "Why is there a gap in your resume?",
+                why: "To understand your career timeline and honesty.",
+                do: [
+                    "Be honest and brief.",
+                    "Focus on what you did during that time (learning, volunteering, caregiving).",
+                    "Emphasize your readiness to return."
+                ],
+                dont: [
+                    "Lie or get defensive.",
+                    "Overshare personal details.",
+                    "Blame former employers."
+                ],
+                example: "I took six months off to care for a family member. During that time, I also completed a certification in Cloud Computing to keep my skills sharp and I'm now fully ready to return to a full-time role."
+            },
+            {
+                q: "Tell me about a time you disagreed with a boss.",
+                why: "To test your conflict resolution and professional maturity.",
+                do: [
+                    "Focus on the issue, not the person.",
+                    "Explain how you presented your case with data.",
+                    "Show that you respected the final decision."
+                ],
+                dont: [
+                    "Badmouth your boss.",
+                    "Say 'I was right and they were wrong'.",
+                    "Say you just did what you were told without caring."
+                ],
+                example: "My manager wanted to launch a feature that I felt wasn't fully tested. I presented data from our beta users showing potential risks. We agreed to a compromise: a phased rollout to a small group first, which caught a critical bug before the full launch."
+            },
+            {
+                q: "Why are you leaving your current job?",
+                why: "To check for red flags and see what motivates you.",
+                do: [
+                    "Focus on seeking new challenges/growth.",
+                    "Mention what attracts you to *this* company.",
+                    "Keep it positive."
+                ],
+                dont: [
+                    "Complain about your current boss or colleagues.",
+                    "Say you're bored.",
+                    "Say you're only leaving for money."
+                ],
+                example: "I've learned a lot at my current role, but I'm looking for an opportunity to lead larger projects and work with more modern tech stacks, which is why I'm so excited about your team's work with AI."
+            },
+            {
+                q: "What do you do when your opinion differs from the team's?",
+                why: "To assess collaboration skills and how you handle conflict.",
+                do: [
+                    "Listen to understand their perspective first.",
+                    "Use data or evidence to support your view.",
+                    "Commit to the final decision ('Disagree and Commit')."
+                ],
+                dont: [
+                    "Take it personally or get defensive.",
+                    "Stay silent during the meeting but complain later.",
+                    "Block progress just to be 'right'."
+                ],
+                example: "I once proposed a new framework that the team rejected due to the learning curve. Instead of arguing, I asked for their specific concerns. We agreed to a small pilot project first. The pilot revealed they were right about the complexity, and I was glad we didn't switch the whole codebase immediately."
+            }
+        ]
+    }
+];
+
+function PrepScreen({ onBack }: { onBack: () => void }) {
+    const [activeCategory, setActiveCategory] = useState<string>(prepContent[0].id);
+    const [expandedQuestion, setExpandedQuestion] = useState<number | null>(null);
+
+    const activeContent = prepContent.find(c => c.id === activeCategory);
+
+    return (
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <div className="px-8 py-6 flex items-center justify-between bg-white/40 backdrop-blur-md border-b border-white/50 sticky top-0 z-10">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-indigo-600">menu_book</span>
+                        Do's & Don'ts
+                    </h2>
+                    <p className="text-slate-500 font-medium text-sm">Master the most common questions</p>
+                </div>
+                <button 
+                    onClick={onBack}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 rounded-xl font-bold shadow-sm hover:shadow-md transition-all border border-slate-100 text-sm"
+                >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    Back
+                </button>
+            </div>
+
+            <div className="flex flex-1 overflow-hidden">
+                {/* Sidebar */}
+                <div className="w-64 bg-white/30 border-r border-white/50 p-4 space-y-2 overflow-y-auto hidden md:block">
+                    {prepContent.map(cat => (
+                        <button
+                            key={cat.id}
+                            onClick={() => { setActiveCategory(cat.id); setExpandedQuestion(null); }}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
+                                activeCategory === cat.id 
+                                ? `bg-${cat.color}-50 text-${cat.color}-700 shadow-sm ring-1 ring-${cat.color}-200` 
+                                : 'hover:bg-white/50 text-slate-600'
+                            }`}
+                        >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                activeCategory === cat.id ? `bg-${cat.color}-200` : 'bg-slate-100'
+                            }`}>
+                                <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+                            </div>
+                            <span className="font-bold text-sm">{cat.title}</span>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10">
+                    {/* Mobile Category Selector */}
+                    <div className="md:hidden flex gap-2 overflow-x-auto pb-4 mb-4 scrollbar-hide">
+                        {prepContent.map(cat => (
+                            <button
+                                key={cat.id}
+                                onClick={() => { setActiveCategory(cat.id); setExpandedQuestion(null); }}
+                                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-all ${
+                                    activeCategory === cat.id
+                                    ? `bg-${cat.color}-600 text-white border-${cat.color}-600`
+                                    : 'bg-white text-slate-600 border-slate-200'
+                                }`}
+                            >
+                                {cat.title}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="max-w-3xl mx-auto space-y-6">
+                        {activeContent?.questions.map((q, idx) => (
+                            <motion.div 
+                                key={idx}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.1 }}
+                                className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden"
+                            >
+                                <button
+                                    onClick={() => setExpandedQuestion(expandedQuestion === idx ? null : idx)}
+                                    className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-50 transition-colors"
+                                >
+                                    <h3 className="text-lg font-bold text-slate-800 pr-4">{q.q}</h3>
+                                    <span className={`material-symbols-outlined text-slate-400 transition-transform duration-300 ${
+                                        expandedQuestion === idx ? 'rotate-180' : ''
+                                    }`}>expand_more</span>
+                                </button>
+
+                                <AnimatePresence>
+                                    {expandedQuestion === idx && (
+                                        <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: 'auto', opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            className="border-t border-slate-100 bg-slate-50/30"
+                                        >
+                                            <div className="p-6 space-y-6">
+                                                {/* Why they ask */}
+                                                <div className="flex gap-4">
+                                                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center">
+                                                        <span className="material-symbols-outlined text-indigo-600">psychology_alt</span>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-indigo-900 text-sm uppercase tracking-wide mb-1">Why they ask</h4>
+                                                        <p className="text-slate-700 text-sm leading-relaxed">{q.why}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid md:grid-cols-2 gap-6">
+                                                    {/* Do's */}
+                                                    <div className="bg-emerald-50/50 rounded-2xl p-5 border border-emerald-100">
+                                                        <h4 className="font-bold text-emerald-800 text-sm uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                            <span className="material-symbols-outlined text-emerald-600 text-lg">check_circle</span>
+                                                            Do This
+                                                        </h4>
+                                                        <ul className="space-y-2">
+                                                            {q.do.map((item, i) => (
+                                                                <li key={i} className="text-sm text-emerald-900 flex items-start gap-2">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0"></span>
+                                                                    {item}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+
+                                                    {/* Don'ts */}
+                                                    <div className="bg-red-50/50 rounded-2xl p-5 border border-red-100">
+                                                        <h4 className="font-bold text-red-800 text-sm uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                            <span className="material-symbols-outlined text-red-600 text-lg">cancel</span>
+                                                            Avoid This
+                                                        </h4>
+                                                        <ul className="space-y-2">
+                                                            {q.dont.map((item, i) => (
+                                                                <li key={i} className="text-sm text-red-900 flex items-start gap-2">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0"></span>
+                                                                    {item}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+
+                                                {/* Example Answer */}
+                                                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-inner">
+                                                    <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-amber-500 text-lg">star</span>
+                                                        Example Answer
+                                                    </h4>
+                                                    <p className="text-slate-600 text-sm italic leading-relaxed border-l-4 border-amber-400 pl-4 py-1">
+                                                        "{q.example}"
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function HelpModal({ onClose }: { onClose: () => void }) {
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -1058,6 +1482,9 @@ function App() {
     });
 
     const [isPaused, setIsPaused] = useState(false);
+
+    // Prep State
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
     // --- Effects ---
 
@@ -1711,6 +2138,13 @@ function App() {
                                             <p className="text-xs font-black text-slate-900 leading-none mb-2">{user.displayName}</p>
                                             <div className="flex gap-2 justify-end">
                                                 <button 
+                                                    onClick={() => setScreen('prep')}
+                                                    className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-100 transition-colors flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">menu_book</span>
+                                                    Do's & Don'ts
+                                                </button>
+                                                <button 
                                                     onClick={() => setScreen('dashboard')}
                                                     className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold hover:bg-emerald-100 transition-colors flex items-center gap-1"
                                                 >
@@ -1779,6 +2213,10 @@ function App() {
                         <ProfileScreen user={user} onBack={() => setScreen('home')} />
                     )}
 
+                    {screen === 'prep' && (
+                        <PrepScreen onBack={() => setScreen('home')} />
+                    )}
+
                     {screen === 'dashboard' && user && (
                         <DashboardScreen 
                             user={user} 
@@ -1828,6 +2266,21 @@ function App() {
                                         <p className="text-slate-500 text-sm font-medium">{card.desc}</p>
                                     </div>
                                 ))}
+                                <div 
+                                    onClick={() => setScreen('prep')}
+                                    className="bg-white/60 hover:bg-white/80 p-8 rounded-[2rem] border border-white/50 shadow-sm hover:shadow-xl transition-all cursor-pointer group text-left md:col-span-3 flex items-center justify-between"
+                                >
+                                    <div className="flex items-center gap-6">
+                                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center transition-transform group-hover:scale-110">
+                                            <span className="material-symbols-outlined text-2xl">menu_book</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-slate-800 mb-1">Do's & Don'ts</h3>
+                                            <p className="text-slate-500 text-sm font-medium">Master common questions with our curated guide</p>
+                                        </div>
+                                    </div>
+                                    <span className="material-symbols-outlined text-slate-300 group-hover:text-indigo-500 transition-colors">arrow_forward</span>
+                                </div>
                             </div>
 
                             {/* Testimonial Carousel */}
