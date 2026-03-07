@@ -444,6 +444,7 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
     const [experienceLevel, setExperienceLevel] = useState('Mid-level');
     const [focusAreas, setFocusAreas] = useState('');
     const [profileLoading, setProfileLoading] = useState(false);
+    const [showAccountSettings, setShowAccountSettings] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -550,8 +551,8 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
                     <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
                         <span className="material-symbols-outlined text-indigo-600 text-4xl">manage_accounts</span>
                     </div>
-                    <h2 className="text-3xl font-black text-slate-900 mb-2">Account Settings</h2>
-                    <p className="text-slate-500 font-semibold">Update your profile information</p>
+                    <h2 className="text-3xl font-black text-slate-900 mb-2">Profile Settings</h2>
+                    <p className="text-slate-500 font-semibold">Update your professional information</p>
                 </div>
 
                 {error && (
@@ -568,45 +569,8 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
                     </div>
                 )}
 
-                <div className="grid md:grid-cols-2 gap-8">
-                    {/* Left Column: Account Info */}
-                    <div className="space-y-6">
-                        <h3 className="text-lg font-black text-slate-800 border-b border-slate-200 pb-2 mb-4">Account</h3>
-                        <div>
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Current Email</label>
-                            <div className="w-full bg-slate-100/50 rounded-xl px-4 py-3 text-slate-500 font-bold border border-slate-200 truncate">
-                                {user.email}
-                            </div>
-                        </div>
-
-                        <form onSubmit={handleUpdateEmail} className="space-y-4">
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">New Email Address</label>
-                                <input 
-                                    type="email" 
-                                    required
-                                    className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm"
-                                    placeholder="new-email@example.com"
-                                    value={newEmail}
-                                    onChange={(e) => setNewEmail(e.target.value)}
-                                />
-                            </div>
-
-                            <button 
-                                type="submit"
-                                disabled={loading}
-                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all flex justify-center items-center gap-2 disabled:opacity-50 text-sm"
-                            >
-                                {loading ? (
-                                    <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
-                                ) : (
-                                    'Update Email'
-                                )}
-                            </button>
-                        </form>
-                    </div>
-
-                    {/* Right Column: Professional Profile */}
+                <div className="space-y-8">
+                    {/* Professional Profile Form */}
                     <div className="space-y-6">
                         <h3 className="text-lg font-black text-slate-800 border-b border-slate-200 pb-2 mb-4">Professional Profile</h3>
                         
@@ -659,6 +623,59 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
                                 )}
                             </button>
                         </form>
+                    </div>
+
+                    {/* Account Settings Toggle */}
+                    <div className="pt-6 border-t border-slate-200">
+                        <button 
+                            onClick={() => setShowAccountSettings(!showAccountSettings)}
+                            className="flex items-center gap-2 text-slate-500 font-bold text-sm hover:text-indigo-600 transition-colors"
+                        >
+                            <span className="material-symbols-outlined">{showAccountSettings ? 'expand_less' : 'expand_more'}</span>
+                            {showAccountSettings ? 'Hide Account Settings' : 'Show Account Settings'}
+                        </button>
+
+                        {showAccountSettings && (
+                            <motion.div 
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                className="mt-6 space-y-6 overflow-hidden"
+                            >
+                                <h3 className="text-lg font-black text-slate-800 border-b border-slate-200 pb-2 mb-4">Account</h3>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Current Email</label>
+                                    <div className="w-full bg-slate-100/50 rounded-xl px-4 py-3 text-slate-500 font-bold border border-slate-200 truncate">
+                                        {user.email}
+                                    </div>
+                                </div>
+
+                                <form onSubmit={handleUpdateEmail} className="space-y-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">New Email Address</label>
+                                        <input 
+                                            type="email" 
+                                            required
+                                            className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                            placeholder="new-email@example.com"
+                                            value={newEmail}
+                                            onChange={(e) => setNewEmail(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <button 
+                                        type="submit"
+                                        disabled={loading}
+                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all flex justify-center items-center gap-2 disabled:opacity-50 text-sm"
+                                    >
+                                        {loading ? (
+                                            <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                                        ) : (
+                                            'Update Email'
+                                        )}
+                                    </button>
+                                </form>
+                            </motion.div>
+                        )}
                     </div>
                 </div>
 
