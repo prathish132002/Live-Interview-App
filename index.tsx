@@ -36,7 +36,10 @@ import {
   orderBy,
   limit,
   Timestamp,
-  User
+  User,
+  doc,
+  setDoc,
+  getDoc
 } from "./firebase";
 
 type SessionType = 'interview' | 'seminar' | 'presentation';
@@ -436,6 +439,53 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
 
+    // Profile State
+    const [jobRoles, setJobRoles] = useState('');
+    const [experienceLevel, setExperienceLevel] = useState('Mid-level');
+    const [focusAreas, setFocusAreas] = useState('');
+    const [profileLoading, setProfileLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (!user) return;
+            try {
+                const docRef = doc(db, "users", user.uid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setJobRoles(data.jobRoles || '');
+                    setExperienceLevel(data.experienceLevel || 'Mid-level');
+                    setFocusAreas(data.focusAreas || '');
+                } else {
+                    // Try local storage if doc doesn't exist yet (or if we want to sync)
+                    const localData = localStorage.getItem(`userProfile_${user.uid}`);
+                    if (localData) {
+                        const parsed = JSON.parse(localData);
+                        setJobRoles(parsed.jobRoles || '');
+                        setExperienceLevel(parsed.experienceLevel || 'Mid-level');
+                        setFocusAreas(parsed.focusAreas || '');
+                    }
+                }
+            } catch (err: any) {
+                console.error("Error fetching profile:", err);
+                // Fallback to local storage on permission error
+                if (err.code === 'permission-denied' || err.message.includes('Missing or insufficient permissions')) {
+                    const localData = localStorage.getItem(`userProfile_${user.uid}`);
+                    if (localData) {
+                        const parsed = JSON.parse(localData);
+                        setJobRoles(parsed.jobRoles || '');
+                        setExperienceLevel(parsed.experienceLevel || 'Mid-level');
+                        setFocusAreas(parsed.focusAreas || '');
+                        // Don't show error for permission denied, just fallback silently or with a toast
+                    }
+                } else {
+                    setError("Could not load profile. " + err.message);
+                }
+            }
+        };
+        fetchProfile();
+    }, [user]);
+
     const handleUpdateEmail = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -444,6 +494,7 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
         try {
             await verifyBeforeUpdateEmail(user, newEmail);
             setMessage("Verification email sent to your new address. Please verify it to complete the update.");
+            setNewEmail('');
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -451,12 +502,49 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
         }
     };
 
+    const handleSaveProfile = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setProfileLoading(true);
+        setError(null);
+        setMessage(null);
+        
+        const profileData = {
+            jobRoles,
+            experienceLevel,
+            focusAreas,
+            updatedAt: new Date().toISOString() // Use string for local storage compatibility
+        };
+
+        try {
+            // Always save to local storage as backup/cache
+            localStorage.setItem(`userProfile_${user.uid}`, JSON.stringify(profileData));
+
+            // Try saving to Firestore
+            await setDoc(doc(db, "users", user.uid), {
+                ...profileData,
+                updatedAt: Timestamp.now()
+            }, { merge: true });
+            
+            setMessage("Profile updated successfully!");
+        } catch (err: any) {
+            console.error("Profile save error:", err);
+            if (err.code === 'permission-denied' || err.message.includes('Missing or insufficient permissions')) {
+                // If permission denied, we already saved to local storage above
+                setMessage("Profile saved locally (Database permissions missing).");
+            } else {
+                setError(err.message);
+            }
+        } finally {
+            setProfileLoading(false);
+        }
+    };
+
     return (
-        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
+        <div className="flex-1 flex flex-col items-center justify-start px-8 py-12 overflow-y-auto custom-scrollbar">
             <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="w-full max-w-md bg-white/60 backdrop-blur-xl rounded-[2.5rem] p-10 border border-white/50 shadow-2xl"
+                className="w-full max-w-2xl bg-white/60 backdrop-blur-xl rounded-[2.5rem] p-10 border border-white/50 shadow-2xl mb-8"
             >
                 <div className="text-center mb-8">
                     <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
@@ -467,51 +555,114 @@ function ProfileScreen({ user, onBack }: { user: User, onBack: () => void }) {
                 </div>
 
                 {error && (
-                    <div className="mb-6 bg-red-500/10 border border-red-500/20 text-red-700 px-4 py-3 rounded-xl text-sm font-medium">
+                    <div className="mb-6 bg-red-500/10 border border-red-500/20 text-red-700 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+                        <span className="material-symbols-outlined text-lg">error</span>
                         {error}
                     </div>
                 )}
 
                 {message && (
-                    <div className="mb-6 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 px-4 py-3 rounded-xl text-sm font-medium">
+                    <div className="mb-6 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+                        <span className="material-symbols-outlined text-lg">check_circle</span>
                         {message}
                     </div>
                 )}
 
-                <div className="space-y-6">
-                    <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Current Email</label>
-                        <div className="w-full bg-slate-100/50 rounded-xl px-4 py-3 text-slate-500 font-bold border border-slate-200">
-                            {user.email}
+                <div className="grid md:grid-cols-2 gap-8">
+                    {/* Left Column: Account Info */}
+                    <div className="space-y-6">
+                        <h3 className="text-lg font-black text-slate-800 border-b border-slate-200 pb-2 mb-4">Account</h3>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Current Email</label>
+                            <div className="w-full bg-slate-100/50 rounded-xl px-4 py-3 text-slate-500 font-bold border border-slate-200 truncate">
+                                {user.email}
+                            </div>
                         </div>
+
+                        <form onSubmit={handleUpdateEmail} className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">New Email Address</label>
+                                <input 
+                                    type="email" 
+                                    required
+                                    className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                    placeholder="new-email@example.com"
+                                    value={newEmail}
+                                    onChange={(e) => setNewEmail(e.target.value)}
+                                />
+                            </div>
+
+                            <button 
+                                type="submit"
+                                disabled={loading}
+                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all flex justify-center items-center gap-2 disabled:opacity-50 text-sm"
+                            >
+                                {loading ? (
+                                    <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                                ) : (
+                                    'Update Email'
+                                )}
+                            </button>
+                        </form>
                     </div>
 
-                    <form onSubmit={handleUpdateEmail} className="space-y-4">
-                        <div>
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">New Email Address</label>
-                            <input 
-                                type="email" 
-                                required
-                                className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm"
-                                placeholder="new-email@example.com"
-                                value={newEmail}
-                                onChange={(e) => setNewEmail(e.target.value)}
-                            />
-                        </div>
+                    {/* Right Column: Professional Profile */}
+                    <div className="space-y-6">
+                        <h3 className="text-lg font-black text-slate-800 border-b border-slate-200 pb-2 mb-4">Professional Profile</h3>
+                        
+                        <form onSubmit={handleSaveProfile} className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Desired Job Roles</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                    placeholder="e.g. Software Engineer, Product Manager"
+                                    value={jobRoles}
+                                    onChange={(e) => setJobRoles(e.target.value)}
+                                />
+                            </div>
 
-                        <button 
-                            type="submit"
-                            disabled={loading}
-                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-lg shadow-indigo-500/30 transition-all flex justify-center items-center gap-2 disabled:opacity-50"
-                        >
-                            {loading ? (
-                                <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                            ) : (
-                                'Update Email'
-                            )}
-                        </button>
-                    </form>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Experience Level</label>
+                                <select 
+                                    className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm appearance-none cursor-pointer"
+                                    value={experienceLevel}
+                                    onChange={(e) => setExperienceLevel(e.target.value)}
+                                >
+                                    <option value="Entry-level">Entry-level (0-2 years)</option>
+                                    <option value="Mid-level">Mid-level (3-5 years)</option>
+                                    <option value="Senior">Senior (5-8 years)</option>
+                                    <option value="Lead">Lead / Staff (8+ years)</option>
+                                    <option value="Executive">Executive / C-Level</option>
+                                </select>
+                            </div>
 
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Focus Areas</label>
+                                <textarea 
+                                    className="w-full bg-white border-none rounded-xl px-4 py-3 text-slate-800 font-bold placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-500/20 transition-all shadow-sm resize-none h-24"
+                                    placeholder="e.g. System Design, Behavioral Questions, React"
+                                    value={focusAreas}
+                                    onChange={(e) => setFocusAreas(e.target.value)}
+                                />
+                            </div>
+
+                            <button 
+                                type="submit"
+                                disabled={profileLoading}
+                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/30 transition-all flex justify-center items-center gap-2 disabled:opacity-50 text-sm"
+                            >
+                                {profileLoading ? (
+                                    <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                                ) : (
+                                    'Save Profile'
+                                )}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div className="mt-8 pt-8 border-t border-slate-200">
                     <button 
                         onClick={onBack}
                         className="w-full py-4 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl font-bold border border-slate-200 shadow-sm transition-all"
@@ -691,6 +842,126 @@ const testimonials = [
     }
 ];
 
+function HelpModal({ onClose }: { onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
+            >
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600">
+                            <span className="material-symbols-outlined">help</span>
+                        </div>
+                        <h2 className="text-xl font-black text-slate-800">How to Use SpeakEasy AI</h2>
+                    </div>
+                    <button 
+                        onClick={onClose}
+                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-lg">close</span>
+                    </button>
+                </div>
+                
+                <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
+                    {/* Section 1: Getting Started */}
+                    <section>
+                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">1</span>
+                            Getting Started
+                        </h3>
+                        <div className="grid md:grid-cols-3 gap-4">
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="material-symbols-outlined text-indigo-500 mb-2">work</span>
+                                <h4 className="font-bold text-slate-700 text-sm mb-1">Select Mode</h4>
+                                <p className="text-xs text-slate-500">Choose Interview, Presentation, or Seminar.</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="material-symbols-outlined text-purple-500 mb-2">tune</span>
+                                <h4 className="font-bold text-slate-700 text-sm mb-1">Configure</h4>
+                                <p className="text-xs text-slate-500">Set your role, topic, and difficulty.</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <span className="material-symbols-outlined text-emerald-500 mb-2">mic</span>
+                                <h4 className="font-bold text-slate-700 text-sm mb-1">Speak</h4>
+                                <p className="text-xs text-slate-500">Interact naturally with the AI coach.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Section 2: Features */}
+                    <section>
+                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">2</span>
+                            Key Features
+                        </h3>
+                        <ul className="space-y-3">
+                            <li className="flex items-start gap-3">
+                                <span className="material-symbols-outlined text-indigo-500 mt-0.5">graphic_eq</span>
+                                <div>
+                                    <p className="font-bold text-slate-700 text-sm">Real-time Voice Interaction</p>
+                                    <p className="text-xs text-slate-500">Low-latency audio conversation powered by Gemini 2.5 Flash.</p>
+                                </div>
+                            </li>
+                            <li className="flex items-start gap-3">
+                                <span className="material-symbols-outlined text-indigo-500 mt-0.5">analytics</span>
+                                <div>
+                                    <p className="font-bold text-slate-700 text-sm">Detailed Feedback</p>
+                                    <p className="text-xs text-slate-500">Get scores on clarity, relevance, and confidence after every session.</p>
+                                </div>
+                            </li>
+                            <li className="flex items-start gap-3">
+                                <span className="material-symbols-outlined text-indigo-500 mt-0.5">manage_accounts</span>
+                                <div>
+                                    <p className="font-bold text-slate-700 text-sm">Personalized Profile</p>
+                                    <p className="text-xs text-slate-500">Save your career details to get tailored questions.</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </section>
+
+                    {/* Section 3: Tips */}
+                    <section>
+                        <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">3</span>
+                            Pro Tips
+                        </h3>
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
+                            <ul className="space-y-2">
+                                <li className="flex items-center gap-2 text-sm text-indigo-900 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                    Use headphones to prevent audio feedback.
+                                </li>
+                                <li className="flex items-center gap-2 text-sm text-indigo-900 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                    Speak clearly and at a moderate pace.
+                                </li>
+                                <li className="flex items-center gap-2 text-sm text-indigo-900 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                    Review your dashboard to track progress over time.
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                </div>
+                
+                <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+                    <button 
+                        onClick={onClose}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all"
+                    >
+                        Got it!
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
+
 function App() {
     const [user, setUser] = useState<User | null>(null);
     const [screen, setScreen] = useState<string>('home'); // home, setup, briefing, interview, feedback, profile, dashboard
@@ -698,6 +969,7 @@ function App() {
     const [error, setError] = useState<string | null>(null);
     const [dashboardSessions, setDashboardSessions] = useState<any[]>([]);
     const [fromDashboard, setFromDashboard] = useState(false);
+    const [showHelpModal, setShowHelpModal] = useState(false);
     
     // Setup State
     const [sessionType, setSessionType] = useState<SessionType>('interview');
@@ -1434,45 +1706,46 @@ function App() {
                         </div>
                         <div className="flex items-center gap-4">
                             {user ? (
-                                <div className="flex items-center gap-3">
-                                    <div className="text-right hidden sm:block">
-                                        <p className="text-xs font-black text-slate-900 leading-none">{user.displayName}</p>
-                                        <div className="flex gap-2 justify-end mt-1">
-                                            <button 
-                                                onClick={() => setScreen('dashboard')}
-                                                className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
-                                            >
-                                                Dashboard
-                                            </button>
-                                            <span className="text-[10px] text-slate-300">|</span>
-                                            <button 
-                                                onClick={() => setScreen('profile')}
-                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
-                                            >
-                                                Profile
-                                            </button>
-                                            <span className="text-[10px] text-slate-300">|</span>
-                                            <button 
-                                                onClick={handleSignOut}
-                                                className="text-[10px] font-bold text-slate-500 hover:text-red-500 transition-colors"
-                                            >
-                                                Sign Out
-                                            </button>
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-right hidden sm:block">
+                                            <p className="text-xs font-black text-slate-900 leading-none mb-2">{user.displayName}</p>
+                                            <div className="flex gap-2 justify-end">
+                                                <button 
+                                                    onClick={() => setScreen('dashboard')}
+                                                    className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold hover:bg-emerald-100 transition-colors flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">analytics</span>
+                                                    Dashboard
+                                                </button>
+                                                <button 
+                                                    onClick={() => setScreen('profile')}
+                                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">person</span>
+                                                    Profile
+                                                </button>
+                                                <button 
+                                                    onClick={handleSignOut}
+                                                    className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold hover:bg-red-50 hover:text-red-500 transition-colors flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">logout</span>
+                                                    Sign Out
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div 
+                                            onClick={() => setScreen('profile')}
+                                            className="cursor-pointer group relative"
+                                        >
+                                            {user.photoURL ? (
+                                                <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-xl border border-white shadow-sm group-hover:shadow-md transition-all" referrerPolicy="no-referrer" />
+                                            ) : (
+                                                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 font-bold group-hover:bg-indigo-200 transition-all">
+                                                    {user.displayName?.charAt(0)}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                    <div 
-                                        onClick={() => setScreen('profile')}
-                                        className="cursor-pointer group relative"
-                                    >
-                                        {user.photoURL ? (
-                                            <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-xl border border-white shadow-sm group-hover:shadow-md transition-all" referrerPolicy="no-referrer" />
-                                        ) : (
-                                            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 font-bold group-hover:bg-indigo-200 transition-all">
-                                                {user.displayName?.charAt(0)}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
                             ) : (
                                 <button 
                                     onClick={handleSignIn}
@@ -1481,13 +1754,20 @@ function App() {
                                     Sign In
                                 </button>
                             )}
-                            <span className="material-symbols-outlined text-slate-500 cursor-pointer hover:text-slate-800 transition-colors">help</span>
+                            <span 
+                                onClick={() => setShowHelpModal(true)}
+                                className="material-symbols-outlined text-slate-500 cursor-pointer hover:text-slate-800 transition-colors"
+                            >
+                                help
+                            </span>
                         </div>
                     </header>
                 )}
 
                 {/* Content Area */}
                 <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar">
+                    {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
+                    
                     {error && (
                         <div className="mx-8 mt-4 bg-red-500/10 border border-red-500/20 text-red-700 px-6 py-3 rounded-2xl flex items-center gap-3 animate-pulse">
                             <span className="material-symbols-outlined">error</span>
